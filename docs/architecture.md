@@ -24,7 +24,7 @@ con Validación JWT local y Service Role**
        ↓
 [Flutter] → request a Worker con ese JWT (Authorization: Bearer xxxxx)
        ↓
-[Worker] → verifica JWT localmente usando clave pública de Supabase
+[Worker] → verifica JWT localmente usando clave pública de Supabase o secreto compartido
        ↓
 [Worker] → si es válido, reenvía la request a Supabase con service_role
        ↓
@@ -35,10 +35,12 @@ con Validación JWT local y Service Role**
 
 # 🔑 Claves de esta arquitectura
 
-## ✅ **1. El JWT se valida localmente**
+## ✅ **1. El JWT se valida de dos formas**
 
+- **Validación primaria**: Intenta verificar el token con `SUPABASE_JWT_SECRET` (secreto compartido)
+- **Validación secundaria**: Si falla la primera, intenta con la clave pública JWK de Supabase (`/.well-known/jwks.json`)
 - No se hace una llamada adicional al endpoint `/auth/v1/user` para validar cada solicitud (excepto cuando se solicita específicamente)
-- Se usa la librería `jose` para validar la firma JWT con la clave pública JWK de Supabase (`/.well-known/jwks.json`)
+- Se usa la librería `jose` para validar la firma JWT
 - Se cachea la JWK para mejorar el rendimiento
 
 ## ✅ **2. El Worker maneja TODO**
@@ -111,6 +113,8 @@ Authorization: Bearer <access_token>
 
 ## 🔸 4. Worker valida el JWT (local)
 
+- Primero intenta verificar con el secreto compartido `SUPABASE_JWT_SECRET`
+- Si falla, usa la clave pública JWK obtenida de Supabase
 - Usa la librería `jose` para Web Crypto
 - Obtiene la JWK de Supabase y la cachea para mejorar el rendimiento
 - Verifica la firma usando el `kid` (key ID) en el header del JWT
@@ -126,11 +130,17 @@ Headers:
   Authorization: Bearer service_role
   Content-Type: application/json
   Prefer: return=representation
+  apikey: service_role  // Incluye también el apikey header
 ```
 
 ---
 
 ## 🔸 6. Si no es válido → responde 401 Unauthorized
+
+- Proporciona mensajes de error específicos según el tipo de error:
+  - Token expirado
+  - Formato de token inválido
+  - Error de configuración de autenticación
 
 ---
 
@@ -144,6 +154,7 @@ Headers:
 | Flutter se queda solo con el `access_token` | Token revocable, temporal, seguro    |
 | Centralización de control en Worker         | Todo el poder, en una sola frontera  |
 | Portabilidad                                | Puedes cambiar de Supabase más fácil |
+| Doble método de validación                  | Mayor flexibilidad y resiliencia     |
 
 ---
 
@@ -154,6 +165,7 @@ Headers:
 | Worker mal protegido = acceso total | Validar JWT estrictamente                           |
 | Token expirado                      | Flutter debe refrescar (`grant_type=refresh_token`) |
 | Complejidad en Worker (JWT + DB)    | Modularizar código, manejar errores bien            |
+| Logs de seguridad                   | Log detallado con redacción de datos sensibles      |
 
 ---
 
@@ -171,8 +183,9 @@ Headers:
    - `/rest/v1/...`: Valida JWT localmente y reenvía la solicitud a Supabase usando `service_role`
 
 3. **Características clave**:
-   - Verificación de JWT usando la biblioteca `jose`
+   - Verificación dual de JWT (secreto compartido y clave pública)
    - Cacheo de claves JWK para mejor rendimiento
-   - Manejo de errores robusto
-   - Log detallado para depuración
+   - Manejo de errores robusto con mensajes específicos
+   - Log detallado para depuración con redacción de información sensible
    - Validación de URL y formato
+   - Inclusión de headers adicionales para Supabase REST API (`apikey`, `Prefer`)

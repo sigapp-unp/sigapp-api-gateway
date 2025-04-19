@@ -1,4 +1,4 @@
-# sigapp-supabase-gateway
+# sigapp-api-gateway
 
 A secure Cloudflare Worker that acts as a gateway between your frontend (e.g., Flutter) and your Supabase backend.
 

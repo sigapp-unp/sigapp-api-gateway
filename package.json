@@ -1,5 +1,5 @@
 {
-	"name": "sigapp-supabase-gateway",
+	"name": "sigapp-api-gateway",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
