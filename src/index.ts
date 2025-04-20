@@ -2,7 +2,7 @@ import { logger } from './logging';
 import { Env, SupabaseConfig } from './types';
 import { parseAndLogRequestBody, createErrorResponse } from './helpers/http';
 import { handleAuthRoutes } from './routes/auth';
-import { handleProtectedRoute } from './routes/database';
+import { handleUpstreamRoute } from './routes/gateway';
 
 export default {
 	/**
@@ -16,14 +16,6 @@ export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		try {
 			let { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, SUPABASE_JWT_SECRET } = env;
-
-			// Normalize Supabase URL (add protocol if missing, remove trailing slash)
-			if (!SUPABASE_URL.startsWith('http://') && !SUPABASE_URL.startsWith('https://')) {
-				SUPABASE_URL = `https://${SUPABASE_URL}`;
-			}
-			if (SUPABASE_URL.endsWith('/')) {
-				SUPABASE_URL = SUPABASE_URL.slice(0, -1);
-			}
 
 			// Create essential URLs and extract request details
 			const JWK_URL = `${SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
@@ -55,21 +47,15 @@ export default {
 
 			// Router: Direct requests to appropriate handlers based on path
 
-			// 1. Authentication endpoints
+			// 1. Authentication endpoints - special case, direct proxy to Supabase auth
 			const authResponse = await handleAuthRoutes(path, method, request, config, jsonBody);
 			if (authResponse) {
 				return authResponse;
 			}
 
-			// 2. Protected database routes
-			const dbResponse = await handleProtectedRoute(path, method, request, url, jsonBody, config);
-			if (dbResponse) {
-				return dbResponse;
-			}
-
-			// 3. Default: Route not found
-			logger.warn(`Route not found: ${path}`, 'Router');
-			return createErrorResponse('Not Found', `Route ${path} does not exist`, 404);
+			// 2. General routing based on X-Upstream header
+			logger.info('Handling request via X-Upstream gateway', 'Router');
+			return await handleUpstreamRoute(path, method, request, url, jsonBody, env);
 		} catch (err) {
 			logger.error(`Unexpected error in worker: ${err}`, 'App');
 			return createErrorResponse('Internal server error', err instanceof Error ? err.message : 'Unknown error', 500);

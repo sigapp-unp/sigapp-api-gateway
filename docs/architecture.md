@@ -1,34 +1,37 @@
 # 🧠 Arquitectura
 
-**Flutter + Cloudflare Worker + Supabase (Auth + DB)
-con Validación JWT local y Service Role**
+**Flutter + Cloudflare Worker como API Gateway + Supabase Auth
+con Validación JWT local y enrutamiento dinámico a múltiples APIs**
 
 ---
 
 ## ⚙️ Componentes
 
-| Elemento              | Función                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| **Flutter**           | UI + manejador de sesión (`access_token`)                               |
-| **Cloudflare Worker** | Backend serverless + verificador de identidad                           |
-| **Supabase Auth**     | Emisor de tokens JWT firmados                                           |
-| **Supabase DB**       | Base de datos PostgreSQL, accedida vía REST, sin RLS, solo desde Worker |
-| **`service_role`**    | Llave secreta usada únicamente en el Worker, con acceso sin RLS         |
+| Elemento               | Función                                                         |
+| ---------------------- | --------------------------------------------------------------- |
+| **Flutter**            | UI + manejador de sesión (`access_token`)                       |
+| **Cloudflare Worker**  | API Gateway + verificador de identidad                          |
+| **Supabase Auth**      | Emisor de tokens JWT firmados                                   |
+| **Supabase DB**        | Base de datos PostgreSQL, accedida vía REST, sin RLS            |
+| **Servicios externos** | OpenAI, servicios internos, etc. accedidos a través del Gateway |
+| **`X-Upstream`**       | Header que indica a qué servicio apuntar (`openai`, `db`, etc.) |
 
 ---
 
 # 📐 Flujo General
 
 ```
-[Flutter] → login/signup → recibe access_token
+[Flutter] → request con JWT + X-Upstream (Authorization: Bearer xxxxx, X-Upstream: openai)
        ↓
-[Flutter] → request a Worker con ese JWT (Authorization: Bearer xxxxx)
+[Worker] → verifica JWT localmente usando clave pública o secreto compartido
        ↓
-[Worker] → verifica JWT localmente usando clave pública de Supabase o secreto compartido
+[Worker] → resuelve X-Upstream → endpoint autorizado según allowedUpstreams
        ↓
-[Worker] → si es válido, reenvía la request a Supabase con service_role
+[Worker] → opcionalmente verifica permisos por subject (ID de usuario)
        ↓
-[Supabase DB] ← responde
+[Worker] → reenvía la request al destino (OpenAI, Supabase, otros)
+       ↓
+[Destino] ← responde
 ```
 
 ---
@@ -39,33 +42,50 @@ con Validación JWT local y Service Role**
 
 - **Validación primaria**: Intenta verificar el token con `SUPABASE_JWT_SECRET` (secreto compartido)
 - **Validación secundaria**: Si falla la primera, intenta con la clave pública JWK de Supabase (`/.well-known/jwks.json`)
-- No se hace una llamada adicional al endpoint `/auth/v1/user` para validar cada solicitud (excepto cuando se solicita específicamente)
+- No se hace una llamada adicional al endpoint `/auth/v1/user` para validar cada solicitud
 - Se usa la librería `jose` para validar la firma JWT
 - Se cachea la JWK para mejorar el rendimiento
 
-## ✅ **2. El Worker maneja TODO**
+## ✅ **2. El Worker funciona como API Gateway**
 
-- El único con `service_role` es el Worker
-- Flutter **no tiene claves sensibles**
-- Flutter solo maneja el `access_token` (JWT)
-- La base **no usa RLS**, pero está protegida porque solo el Worker accede usando `service_role`
+- Único punto de validación de identidad mediante JWT de Supabase
+- Enrutamiento dinámico a múltiples servicios externos mediante `X-Upstream`
+- No expone claves API directamente al cliente (Flutter)
+- Puede realizar validación adicional por usuario específico (claims en JWT)
+- Mantiene compatibilidad con el flujo anterior para Supabase DB
+
+## ✅ **3. Enrutamiento seguro con `allowedUpstreams`**
+
+- `X-Upstream` no define directamente la URL de destino
+- El Worker solo acepta valores predefinidos en la configuración
+- Cada upstream puede tener sus propias cabeceras y restricciones
+- Permite controlar precisamente quién puede acceder a cada servicio
+
+## ✅ **4. Manejo seguro de credenciales**
+
+- Las claves API se configuran como variables de entorno secretas (`OPENAI_API_KEY`, etc.)
+- Se inyectan automáticamente en la configuración de upstreams en tiempo de ejecución
+- Mantiene las credenciales fuera de la configuración JSON `ALLOWED_UPSTREAMS`
+- Mayor seguridad y facilidad de rotación de claves
 
 ---
 
 # 🔐 ¿Por qué es seguro?
 
-| Riesgo                        | Mitigación                                      |
-| ----------------------------- | ----------------------------------------------- |
-| Clave filtrada                | `service_role` nunca está en el cliente         |
-| Session hijack (token robado) | JWT firmado, validado local, expira rápido      |
-| Acceso sin auth               | Worker niega cualquier request sin token válido |
-| Bypass del Worker             | Supabase solo permite acceso con `service_role` |
+| Riesgo                        | Mitigación                                                            |
+| ----------------------------- | --------------------------------------------------------------------- |
+| Clave filtrada                | API Keys nunca están en el cliente                                    |
+| Credenciales en configuración | Las claves se almacenan como secrets separados, no en JSON            |
+| Session hijack (token robado) | JWT firmado, validado local, expira rápido                            |
+| Acceso sin auth               | Worker niega cualquier request sin token válido                       |
+| Bypass del Worker             | Servicios externos configurados para solo aceptar requests del Worker |
+| `X-Upstream` malicioso        | Solo se permiten valores predefinidos en `allowedUpstreams`           |
 
 ---
 
 # 📚 Flujo Detallado
 
-## 🔸 1. Login, signup o refresh token (Flutter → Worker → Supabase Auth)
+## 🔸 1. Login, signup o refresh token (igual que antes)
 
 ```
 POST https://tu-worker.workers.dev/auth/login
@@ -73,119 +93,102 @@ POST https://tu-worker.workers.dev/auth/signup
 POST https://tu-worker.workers.dev/auth/refresh
 ```
 
-El Worker reenvía estas solicitudes a los endpoints de Supabase Auth:
+El Worker reenvía estas solicitudes a Supabase Auth y devuelve los tokens.
 
-- `/auth/v1/token?grant_type=password` (login)
-- `/auth/v1/signup` (registro)
-- `/auth/v1/token?grant_type=refresh_token` (refresh)
-
-Devuelve como respuesta:
-
-- `access_token` (JWT firmado por Supabase)
-- `refresh_token`
-- `user`
-
-## 🔸 1.1. Verificación de usuario (Flutter → Worker → Supabase Auth)
-
-```
-GET https://tu-worker.workers.dev/auth/user
-Authorization: Bearer <access_token>
-```
-
-El Worker reenvía esta solicitud al endpoint `/auth/v1/user` de Supabase Auth para verificar la sesión del usuario.
-
----
-
-## 🔸 2. Flutter guarda ese `access_token`
+## 🔸 2. Flutter guarda ese `access_token` (JWT)
 
 Puede usar `flutter_secure_storage` o incluso memoria.
 
----
-
-## 🔸 3. Flutter hace peticiones a DB (vía Worker)
+## 🔸 3. Flutter hace peticiones a cualquier servicio (vía Worker)
 
 ```
-GET https://tu-worker.workers.dev/rest/v1/messages?user_id=eq.abc
-Authorization: Bearer <access_token>
+GET https://tu-worker.workers.dev/cualquier/ruta
+Headers:
+  Authorization: Bearer <access_token>
+  X-Upstream: openai
+  Content-Type: application/json
 ```
-
----
 
 ## 🔸 4. Worker valida el JWT (local)
 
-- Primero intenta verificar con el secreto compartido `SUPABASE_JWT_SECRET`
-- Si falla, usa la clave pública JWK obtenida de Supabase
-- Usa la librería `jose` para Web Crypto
-- Obtiene la JWK de Supabase y la cachea para mejorar el rendimiento
-- Verifica la firma usando el `kid` (key ID) en el header del JWT
-- Verifica implícitamente la expiración y otros claims
+- Primero intenta verificar con el secreto compartido
+- Si falla, usa la clave pública JWK de Supabase
+- Verifica la firma, expiración y otros claims
 
----
+## 🔸 5. Worker verifica el `X-Upstream`
 
-## 🔸 5. Si válido → el Worker hace la request real a Supabase
+- Comprueba si el valor está en la configuración `allowedUpstreams`
+- Verifica si el usuario tiene permisos para ese upstream según su ID
+- Si no es válido, responde con error 400 o 403
+
+## 🔸 6. Worker reenvía la request al servicio externo
 
 ```
-POST https://supabase/rest/v1/messages
+POST https://api.openai.com/v1/cualquier/ruta
 Headers:
-  Authorization: Bearer service_role
+  Authorization: Bearer sk-openai-key-secreta
   Content-Type: application/json
-  Prefer: return=representation
-  apikey: service_role  // Incluye también el apikey header
 ```
 
----
-
-## 🔸 6. Si no es válido → responde 401 Unauthorized
-
-- Proporciona mensajes de error específicos según el tipo de error:
-  - Token expirado
-  - Formato de token inválido
-  - Error de configuración de autenticación
+- Añade las cabeceras necesarias (API keys, tokens) según la configuración
+- No reenvía el header Authorization original con el JWT de Supabase
+- Mantiene el método HTTP y cuerpo de la solicitud original
+- La respuesta del servicio externo se devuelve al cliente
 
 ---
 
 # 🧠 Ventajas de este plan
 
-| Ventaja                                     | Por qué importa                      |
-| ------------------------------------------- | ------------------------------------ |
-| Sin RLS                                     | Simple, flexible, control absoluto   |
-| No `anon key` en Flutter                    | Menor superficie de ataque           |
-| No doble request por validación             | Menor latencia y coste               |
-| Flutter se queda solo con el `access_token` | Token revocable, temporal, seguro    |
-| Centralización de control en Worker         | Todo el poder, en una sola frontera  |
-| Portabilidad                                | Puedes cambiar de Supabase más fácil |
-| Doble método de validación                  | Mayor flexibilidad y resiliencia     |
+| Ventaja                              | Por qué importa                                    |
+| ------------------------------------ | -------------------------------------------------- |
+| Reutilización del sistema Auth       | Una sola autenticación para todo                   |
+| No exponer claves API en cliente     | Mayor seguridad, menos riesgo                      |
+| Control centralizado de permisos     | Política de acceso unificada                       |
+| Flexibilidad para conectar servicios | Fácil integración de nuevas APIs                   |
+| Evolución natural del proxy          | Mantiene compatibilidad                            |
+| Observabilidad centralizada          | Logs y métricas en un solo lugar                   |
+| Gestión segura de credenciales       | Las claves API se mantienen como secretos aislados |
 
 ---
 
 # ❌ Riesgos o desafíos
 
-| Riesgo                              | Mitigación                                          |
-| ----------------------------------- | --------------------------------------------------- |
-| Worker mal protegido = acceso total | Validar JWT estrictamente                           |
-| Token expirado                      | Flutter debe refrescar (`grant_type=refresh_token`) |
-| Complejidad en Worker (JWT + DB)    | Modularizar código, manejar errores bien            |
-| Logs de seguridad                   | Log detallado con redacción de datos sensibles      |
+| Riesgo                           | Mitigación                                          |
+| -------------------------------- | --------------------------------------------------- |
+| Worker como punto único de fallo | Considerar redundancia y alta disponibilidad        |
+| Latencia añadida                 | Optimizar código, usar caching adecuado             |
+| Complejidad en configuración     | Documentar bien la estructura de `allowedUpstreams` |
+| Límites de Cloudflare Workers    | Monitorizar uso de CPU y memoria                    |
 
 ---
 
 # 🧰 Implementación actual
 
-1. **Endpoints de autenticación**:
+1. **Gateway dinámico**:
 
-   - `/auth/signup`: Registro de usuarios
-   - `/auth/login`: Inicio de sesión
-   - `/auth/refresh`: Renovación de tokens
-   - `/auth/user`: Verificación de sesión
+   - Configuración base mediante variable de entorno `ALLOWED_UPSTREAMS`
+   - Formato JSON con mapeo de upstreams y sus configuraciones
+   - Cada upstream define `baseUrl` y `restrictions` opcionales
+   - Las claves API sensibles se configuran como secretos separados
 
-2. **Endpoint para acceso a la base de datos**:
+2. **Control de acceso**:
 
-   - `/rest/v1/...`: Valida JWT localmente y reenvía la solicitud a Supabase usando `service_role`
+   - Verificación por `sub` (ID de usuario) en el JWT
+   - Configuración granular por upstream
+   - Compatibilidad con flujo anterior para Supabase DB
 
-3. **Características clave**:
-   - Verificación dual de JWT (secreto compartido y clave pública)
-   - Cacheo de claves JWK para mejor rendimiento
-   - Manejo de errores robusto con mensajes específicos
-   - Log detallado para depuración con redacción de información sensible
-   - Validación de URL y formato
-   - Inclusión de headers adicionales para Supabase REST API (`apikey`, `Prefer`)
+3. **Ejemplo de configuración**:
+
+4. **Configuración de secretos**:
+
+```bash
+# Las claves API y secretos se configuran por separado
+wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+wrangler secret put SUPABASE_ANON_KEY
+wrangler secret put SUPABASE_JWT_SECRET
+wrangler secret put OPENAI_API_KEY
+```
+
+5. **Inyección automática de credenciales**:
+
+El código detecta automáticamente qué upstream se está utilizando e inyecta las credenciales correspondientes desde las variables de entorno secretas, manteniendo las claves API fuera de la configuración JSON.

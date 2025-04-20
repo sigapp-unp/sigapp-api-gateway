@@ -10,6 +10,8 @@ export interface Env {
 	SUPABASE_ANON_KEY: string;
 	/** JWT secret used for token verification with HS256 algorithm */
 	SUPABASE_JWT_SECRET: string;
+	/** OpenAI API key for OpenAI service integration */
+	OPENAI_API_KEY: string;
 }
 
 /**
