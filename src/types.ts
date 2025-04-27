@@ -18,7 +18,7 @@ export interface Env {
  * Configuration object with processed environment variables
  */
 export interface SupabaseConfig {
-	supabaseUrl: string;
+	url: string;
 	serviceRoleKey: string;
 	anonKey: string;
 	jwtSecret: string;

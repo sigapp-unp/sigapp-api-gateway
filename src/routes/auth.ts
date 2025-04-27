@@ -18,7 +18,7 @@ export async function proxyAuthRequest(
 	method: string,
 	request: Request,
 	jsonBody: string | null,
-	config: SupabaseConfig
+	{ url, anonKey }: SupabaseConfig
 ): Promise<Response> {
 	try {
 		// Extract search params from original URL
@@ -26,7 +26,7 @@ export async function proxyAuthRequest(
 		const searchParams = originalUrl.search;
 
 		// Create auth endpoint URL by combining Supabase URL and the original path + query params
-		const endpoint = `${config.supabaseUrl}${path}${searchParams}`;
+		const endpoint = `${url}${path}${searchParams}`;
 
 		logger.info(`Proxying auth request to: ${endpoint}`, 'Auth');
 
@@ -36,8 +36,8 @@ export async function proxyAuthRequest(
 		// Prepare headers for auth request
 		const headers: Record<string, string> = {
 			'Content-Type': request.headers.get('Content-Type') ?? 'application/json',
-			apikey: config.anonKey,
-			'X-Client-Info': 'sigapp-proxy',
+			apikey: anonKey,
+			// 'X-Client-Info': 'sigapp-proxy',
 		};
 
 		// Pass through Authorization header if present

@@ -35,7 +35,7 @@ export default {
 
 			// Create a configuration object to pass around
 			const config: SupabaseConfig = {
-				supabaseUrl: SUPABASE_URL,
+				url: SUPABASE_URL,
 				serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
 				anonKey: SUPABASE_ANON_KEY,
 				jwtSecret: SUPABASE_JWT_SECRET,
