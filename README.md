@@ -1,14 +1,15 @@
 # sigapp-api-gateway
 
-A secure Cloudflare Worker that acts as a gateway between the frontend the Supabase backend.
+A secure Cloudflare Worker that acts as a gateway between the frontend and various backend services, including Supabase.
 
 ## 🧠 Purpose
 
-- **Protect your Supabase service_role key** by keeping it server-side only.
-- **Validate JWTs locally** using Supabase's public JWKs — no extra API call to `/auth/user`.
-- **Enforce a clean architecture**: frontend sends access_tokens, Worker handles identity and talks to Supabase.
+- **Protect your API keys and secrets** by keeping them server-side only (Supabase service_role key, OpenAI API key, etc.).
+- **Validate JWTs locally** using both Supabase JWT secret and public JWKs — no extra API call to `/auth/user`.
+- **Enforce a clean architecture**: frontend sends access_tokens, Worker handles identity and talks to backend services.
 - **Avoid using RLS** (Row Level Security) by centralizing access control in the Worker.
 - **Act as API Gateway** for multiple services (Supabase, OpenAI, etc.) with unified authentication.
+- **Dynamic credential injection** via environment variables rather than hardcoded configuration.
 
 ## 🚀 How it works
 
@@ -37,7 +38,7 @@ npm run cf-typegen # Verify
 
 ## ⚙️ Setup
 
-Please do not end SUPABASE_URL in '/'
+Please do not end SUPABASE_URL with a trailing '/'
 
 ```bash
 npm install
@@ -46,34 +47,48 @@ wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 wrangler secret put SUPABASE_ANON_KEY
 wrangler secret put SUPABASE_JWT_SECRET
 wrangler secret put OPENAI_API_KEY
+# Add additional API keys for other services as needed
 ```
 
-### 🔐 Configuración de Upstreams
+### 🔐 Upstream Services Configuration
 
-```json
-{
-	"supabase": {
-		"baseUrl": "${SUPABASE_URL}/rest/v1",
-		"headers": {
-			"apikey": "${SUPABASE_SERVICE_ROLE_KEY}",
-			"Authorization": "Bearer ${SUPABASE_SERVICE_ROLE_KEY}",
-			"Prefer": "'return=representation'"
-		}
+The gateway uses an `upstreamServices` configuration object that defines available services. The system automatically injects credentials from environment variables at runtime using placeholders:
+
+```typescript
+export const upstreamServices = {
+	supabase: {
+		baseUrl: '${SUPABASE_URL}/rest/v1',
+		headers: {
+			apikey: '${SUPABASE_SERVICE_ROLE_KEY}',
+			Authorization: 'Bearer ${SUPABASE_SERVICE_ROLE_KEY}',
+			Prefer: 'return=representation',
+		},
 	},
-	"openai": {
-		"baseUrl": "https://api.openai.com/v1",
-		"headers": {
-			"Authorization": "Bearer ${OPENAI_API_KEY}"
-		}
-	}
-}
+	openai: {
+		baseUrl: 'https://api.openai.com/v1',
+		headers: {
+			Authorization: 'Bearer ${OPENAI_API_KEY}',
+		},
+	},
+	// Add additional upstream services as needed
+};
 ```
 
-### Notas importantes:
+### Important notes:
 
-1. Los placeholders `${VARIABLE}` serán reemplazados por el valor de la variable de entorno correspondiente.
+1. The placeholders `${VARIABLE}` will be replaced with the corresponding environment variable values at runtime.
+2. This approach keeps sensitive credentials separate from the configuration code.
+3. To add a new upstream service, add a new entry to the `upstreamServices` object and set the required environment variables.
 
-## 🧪 Local test
+## 🔐 Security Features
+
+- **Two-stage JWT validation**:
+  - Primary: Validates using `SUPABASE_JWT_SECRET` (shared secret)
+  - Secondary: Falls back to JWK validation (public key from Supabase)
+- **Safe credential handling**: API keys stored as isolated environment secrets
+- **Secure routing**: `X-Upstream` only allows predefined service routes
+
+## 🧪 Local testing
 
 ```bash
 # Remote mode (requires workers.dev subdomain)
@@ -102,33 +117,27 @@ Proxies directly to Supabase Auth API:
   - `/auth/v1/token?grant_type=password` → Login endpoint
   - `/auth/v1/token?grant_type=refresh_token` → Token refresh endpoint
 
-### `ANY /rest/v1/...`
-
-Protected route:
-
-- Requires `Authorization: Bearer <access_token>`
-- Validates JWT locally (via JWK)
-- Forwards request to Supabase with `service_role`
-
 ### `ANY /<any-route>`
 
-Con el header `X-Upstream`:
+With the `X-Upstream` header:
 
-- Requiere `Authorization: Bearer <access_token>`
-- Requiere `X-Upstream: <nombre-del-upstream>` (ej: `openai`, `github`, etc.)
-- Valida JWT localmente
-- Reenvía la petición al servicio apropiado con las credenciales configuradas
+- Requires `Authorization: Bearer <access_token>`
+- Requires `X-Upstream: <upstream-name>` (e.g., `supabase`, `openai`, etc.)
+- Validates JWT locally (using both methods)
+- Forwards request to the appropriate service with configured credentials
+- Preserves HTTP method and request body
 
-## 📱 Uso desde el frontend (ejemplos)
+## 📱 Client Usage Examples
 
-### Supabase (modo tradicional)
+### Supabase REST API (as upstream)
 
 ```http
-GET /rest/v1/messages?user_id=eq.abc
+GET /items?user_id=eq.abc
 Authorization: Bearer <your-access-token>
+X-Upstream: supabase
 ```
 
-### OpenAI (como upstream)
+### OpenAI (as upstream)
 
 ```http
 POST /chat/completions
@@ -142,15 +151,15 @@ Content-Type: application/json
 }
 ```
 
-### GitHub API (como upstream)
+### Adding New Upstream Services
 
-```http
-GET /repos/usuario/repositorio/issues
-Authorization: Bearer <your-access-token>
-X-Upstream: github
-```
+1. Add the service configuration to `upstreamServices` in `src/config/proxy.ts`
+2. Set any required API keys or secrets as environment variables
+3. Deploy the worker with the updated configuration
 
 ---
+
+For more details on the architecture, refer to the [architecture.md](./docs/architecture.md) document.
 
 Stay minimal. Stay sovereign.
 The Worker is your border — **protect it accordingly**.

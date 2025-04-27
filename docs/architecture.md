@@ -25,7 +25,7 @@ con Validación JWT local y enrutamiento dinámico a múltiples APIs**
        ↓
 [Worker] → verifica JWT localmente usando clave pública o secreto compartido
        ↓
-[Worker] → resuelve X-Upstream → endpoint autorizado según allowedUpstreams
+[Worker] → resuelve X-Upstream → endpoint autorizado según upstreamServices
        ↓
 [Worker] → opcionalmente verifica permisos por subject (ID de usuario)
        ↓
@@ -54,7 +54,7 @@ con Validación JWT local y enrutamiento dinámico a múltiples APIs**
 - Puede realizar validación adicional por usuario específico (claims en JWT)
 - Mantiene compatibilidad con el flujo anterior para Supabase DB
 
-## ✅ **3. Enrutamiento seguro con `allowedUpstreams`**
+## ✅ **3. Enrutamiento seguro con `upstreamServices`**
 
 - `X-Upstream` no define directamente la URL de destino
 - El Worker solo acepta valores predefinidos en la configuración
@@ -65,7 +65,7 @@ con Validación JWT local y enrutamiento dinámico a múltiples APIs**
 
 - Las claves API se configuran como variables de entorno secretas (`OPENAI_API_KEY`, etc.)
 - Se inyectan automáticamente en la configuración de upstreams en tiempo de ejecución
-- Mantiene las credenciales fuera de la configuración JSON `ALLOWED_UPSTREAMS`
+- Mantiene las credenciales fuera de la configuración de upstreamServices
 - Mayor seguridad y facilidad de rotación de claves
 
 ---
@@ -79,7 +79,7 @@ con Validación JWT local y enrutamiento dinámico a múltiples APIs**
 | Session hijack (token robado) | JWT firmado, validado local, expira rápido                            |
 | Acceso sin auth               | Worker niega cualquier request sin token válido                       |
 | Bypass del Worker             | Servicios externos configurados para solo aceptar requests del Worker |
-| `X-Upstream` malicioso        | Solo se permiten valores predefinidos en `allowedUpstreams`           |
+| `X-Upstream` malicioso        | Solo se permiten valores predefinidos en `upstreamServices`           |
 
 ---
 
@@ -117,7 +117,7 @@ Headers:
 
 ## 🔸 5. Worker verifica el `X-Upstream`
 
-- Comprueba si el valor está en la configuración `allowedUpstreams`
+- Comprueba si el valor está en la configuración `upstreamServices`
 - Verifica si el usuario tiene permisos para ese upstream según su ID
 - Si no es válido, responde con error 400 o 403
 
@@ -157,7 +157,7 @@ Headers:
 | -------------------------------- | --------------------------------------------------- |
 | Worker como punto único de fallo | Considerar redundancia y alta disponibilidad        |
 | Latencia añadida                 | Optimizar código, usar caching adecuado             |
-| Complejidad en configuración     | Documentar bien la estructura de `allowedUpstreams` |
+| Complejidad en configuración     | Documentar bien la estructura de `upstreamServices` |
 | Límites de Cloudflare Workers    | Monitorizar uso de CPU y memoria                    |
 
 ---
@@ -166,10 +166,10 @@ Headers:
 
 1. **Gateway dinámico**:
 
-   - Configuración base mediante variable de entorno `ALLOWED_UPSTREAMS`
-   - Formato JSON con mapeo de upstreams y sus configuraciones
-   - Cada upstream define `baseUrl` y `restrictions` opcionales
-   - Las claves API sensibles se configuran como secretos separados
+   - Configuración mediante el objeto `upstreamServices` en la aplicación
+   - Cada upstream define `baseUrl` y cabeceras específicas
+   - Las claves API sensibles se configuran como variables de entorno secretas
+   - Se usan placeholders `${VARIABLE}` que se reemplazan con valores reales en tiempo de ejecución
 
 2. **Control de acceso**:
 
@@ -178,6 +178,25 @@ Headers:
    - Compatibilidad con flujo anterior para Supabase DB
 
 3. **Ejemplo de configuración**:
+
+```ts
+export const upstreamServices = {
+	supabase: {
+		baseUrl: '${SUPABASE_URL}',
+		headers: {
+			apikey: '${SUPABASE_SERVICE_ROLE_KEY}',
+			Authorization: 'Bearer ${SUPABASE_SERVICE_ROLE_KEY}',
+			Prefer: 'return=representation',
+		},
+	},
+	openai: {
+		baseUrl: 'https://api.openai.com/v1',
+		headers: {
+			Authorization: 'Bearer ${OPENAI_API_KEY}',
+		},
+	},
+};
+```
 
 4. **Configuración de secretos**:
 
