@@ -38,6 +38,8 @@ npm run cf-typegen # Verify
 
 ## ⚙️ Setup
 
+### Manually
+
 Please do not end SUPABASE_URL with a trailing '/'
 
 ```bash
@@ -49,6 +51,35 @@ wrangler secret put SUPABASE_JWT_SECRET
 wrangler secret put OPENAI_API_KEY
 # Add additional API keys for other services as needed
 ```
+
+### Using .env file
+
+1. Duplicate [.env.example](.env.example) as `.env` and set your values.
+2. Execute script.
+
+- Linux / WSL / Mac (bash, zsh, sh)
+
+```bash
+while IFS='=' read -r key value; do
+  if [ -n "$key" ] && [ -n "$value" ]; then
+    echo "$value" | wrangler secret put "$key"
+  fi
+done < secrets.env
+```
+
+- Windows (PowerShell)
+
+```ps1
+Get-Content secrets.env | ForEach-Object {
+  if ($_ -match '^([^=]+)=(.+)$') {
+    $key = $matches[1].Trim()
+    $value = $matches[2].Trim()
+    $value | wrangler secret put $key
+  }
+}
+```
+
+## Important concepts
 
 ### 🔐 Upstream Services Configuration
 
@@ -88,7 +119,9 @@ export const upstreamServices = {
 - **Safe credential handling**: API keys stored as isolated environment secrets
 - **Secure routing**: `X-Upstream` only allows predefined service routes
 
-## 🧪 Local testing
+## Test and Deployment
+
+### 🧪 Local testing
 
 ```bash
 # Remote mode (requires workers.dev subdomain)
@@ -98,10 +131,26 @@ wrangler dev --remote --ip 0.0.0.0
 wrangler dev
 ```
 
-## 🚢 Deploy
+### 🚢 Deploy
 
 ```bash
 wrangler deploy
+```
+
+Example output:
+
+```bash
+$ wrangler deploy
+
+ ⛅️ wrangler 4.12.0 (update available 4.13.2)
+-------------------------------------------------------
+
+Total Upload: 10.75 KiB / gzip: 3.17 KiB
+No bindings found.
+Uploaded sigapp-api-gateway (3.34 sec)
+Deployed sigapp-api-gateway triggers (1.42 sec)
+  https://sigapp-api-gateway.j-daniel-c-b.workers.dev
+Current Version ID: dd190695-e8f3-43c3-a9d7-d9cd98ab477a
 ```
 
 ## 📦 Endpoints
