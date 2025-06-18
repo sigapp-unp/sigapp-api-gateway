@@ -1,7 +1,7 @@
 import { logger } from '../logging';
 import { SupabaseConfig } from '../types';
 import { createErrorResponse } from '../helpers/http';
-import { handlePasswordReset } from '../helpers/external-services';
+import { handlePasswordReset, handleVerifyUserExists } from '../helpers/external-services';
 
 /**
  * Handles tools-related requests (password reset, academic validation, etc.)
@@ -28,6 +28,12 @@ export async function handleToolsRoute({
 		if (requestUrl.pathname === '/tools/password-reset' && request.method === 'POST') {
 			logger.info(`Handling password reset request`, 'Tools');
 			return await handlePasswordReset(jsonBody, supabaseConfig);
+		}
+
+		// Route: POST /tools/verify-user-exists
+		if (requestUrl.pathname === '/tools/verify-user-exists' && request.method === 'POST') {
+			logger.info(`Handling user verification request`, 'Tools');
+			return await handleVerifyUserExists(jsonBody, supabaseConfig);
 		}
 
 		// Add more tools here in the future:

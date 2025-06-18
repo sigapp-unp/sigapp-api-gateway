@@ -138,6 +138,70 @@ async function updateUserPassword(userId: string, newPassword: string, supabaseC
 }
 
 /**
+ * Main handler for verifying if a user exists by academic username
+ * @param jsonBody - Request body as string or null
+ * @param supabaseConfig - Supabase configuration
+ * @returns Response with user existence information
+ */
+export async function handleVerifyUserExists(jsonBody: string | null, supabaseConfig: SupabaseConfig): Promise<Response> {
+	try {
+		// Validate required fields
+		if (!jsonBody) {
+			return createErrorResponse('Bad Request', 'Request body is required', 400);
+		}
+
+		let requestBody;
+		try {
+			requestBody = JSON.parse(jsonBody);
+		} catch (parseError) {
+			return createErrorResponse('Bad Request', 'Invalid JSON in request body', 400);
+		}
+
+		if (!requestBody.academicUsername) {
+			return createErrorResponse('Bad Request', 'Missing required field: academicUsername is required', 400);
+		}
+
+		const { academicUsername } = requestBody;
+
+		// Find user by academic username
+		logger.info(`Verifying user existence for academic username: ${academicUsername}`, 'UserVerification');
+		const { userId, message } = await findUserByAcademicUsername(academicUsername, supabaseConfig);
+
+		if (!userId) {
+			logger.info(`User verification result: User not found - ${message}`, 'UserVerification');
+			return new Response(
+				JSON.stringify({
+					exists: false,
+					academicUsername,
+					message,
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
+
+		logger.info(`User verification result: User found - ${userId}`, 'UserVerification');
+		return new Response(
+			JSON.stringify({
+				exists: true,
+				academicUsername,
+				userId,
+				message: `User found with ID: ${userId}`,
+			}),
+			{
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}
+		);
+	} catch (error) {
+		logger.error(`Error in user verification: ${error}`, 'UserVerification');
+		return createErrorResponse('Service Unavailable', error instanceof Error ? error.message : `${error}`, 500);
+	}
+}
+
+/**
  * Main handler for admin password reset with academic validation
  * @param jsonBody - Request body as string or null
  * @param supabaseConfig - Supabase configuration

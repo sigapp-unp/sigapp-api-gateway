@@ -1,0 +1,101 @@
+meta {
+  name: Verify User Exists
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/tools/verify-user-exists
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "academicUsername": "{{academic_username}}"
+  }
+}
+
+vars:pre-request {
+  base_url: http://localhost:8787
+  academic_username: 0812024054
+}
+
+tests {
+  test("should return 200 for any valid request", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("should contain exists property", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('exists');
+    expect(typeof body.exists).to.equal('boolean');
+  });
+
+  test("should contain academicUsername property", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('academicUsername');
+    expect(body.academicUsername).to.equal('{{academic_username}}');
+  });
+
+  test("should contain message property", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('message');
+    expect(typeof body.message).to.equal('string');
+  });
+
+  test("if user exists, should contain userId", function() {
+    const body = res.getBody();
+    if (body.exists) {
+      expect(body).to.have.property('userId');
+      expect(typeof body.userId).to.equal('string');
+    }
+  });
+}
+
+docs {
+  # Verify User Exists Test
+
+  Este endpoint permite verificar si un usuario existe en Supabase usando su nombre de usuario académico (código de estudiante).
+
+  ## Prerequisitos
+  1. El proxy debe estar corriendo en localhost:8787
+  2. Supabase debe estar configurado correctamente
+
+  ## Variables a configurar
+  - `academic_username`: Código de estudiante UNP a verificar (ej: 0812024054)
+
+  ## Flujo de verificación
+  1. El proxy busca el usuario en Supabase usando el email construido: `{academicUsername}@sigapp.dev`
+  2. Retorna información sobre si el usuario existe o no
+
+  ## Respuestas esperadas
+
+  ### Usuario existe:
+  ```json
+  {
+    "exists": true,
+    "academicUsername": "0812024054",
+    "userId": "uuid-del-usuario",
+    "message": "User found with ID: uuid-del-usuario"
+  }
+  ```
+
+  ### Usuario no existe:
+  ```json
+  {
+    "exists": false,
+    "academicUsername": "0812024054",
+    "message": "No user found with academic username 0812024054 (email: 0812024054@sigapp.dev)"
+  }
+  ```
+
+  ## Códigos de respuesta
+  - **200**: Verificación completada (usuario existe o no existe)
+  - **400**: Formato de request incorrecto o falta academicUsername
+  - **500**: Error interno del servidor o Supabase
+}
