@@ -1,27 +1,28 @@
 import { logger } from '../logging';
-import { Env, SupabaseConfig } from '../types';
+import { Env } from '../types';
 import { createErrorResponse, makeProxyResponse, logRequestHeaders, logErrorResponseBody } from '../helpers/http';
 import { getUpstreamConfig, UpstreamConfig } from '../config/proxy';
 
 /**
  * Forward requests to an upstream service based on the X-Upstream header
  *
- * @param path - The request path
- * @param method - The HTTP method
  * @param request - The original HTTP request
- * @param url - The parsed URL
+ * @param requestUrl - The parsed URL
  * @param jsonBody - The request body as a string
  * @param env - Environment variables
  * @returns HTTP response
  */
-export async function handleUpstreamRoute(
-	path: string,
-	method: string,
-	request: Request,
-	url: URL,
-	jsonBody: string | null,
-	env: Env
-): Promise<Response> {
+export async function handleUpstreamRoute({
+	requestUrl,
+	request,
+	jsonBody,
+	env,
+}: {
+	request: Request;
+	requestUrl: URL;
+	jsonBody: string | null;
+	env: Env;
+}): Promise<Response> {
 	// Get the upstream service from header
 	const upstreamService = request.headers.get('X-Upstream');
 
@@ -36,7 +37,7 @@ export async function handleUpstreamRoute(
 		logger.info(`Routing to upstream service: ${upstreamService}`, 'Gateway');
 
 		// Forward the request to the appropriate upstream service
-		return await forwardRequestToUpstream(path, method, request, url, jsonBody, upstreamConfig);
+		return await forwardRequestToUpstream(request.method, request, requestUrl, jsonBody, upstreamConfig);
 	} catch (err) {
 		logger.error(`Error handling upstream route: ${err}`, 'Gateway');
 
@@ -60,7 +61,6 @@ export async function handleUpstreamRoute(
  * @returns HTTP response from the upstream service
  */
 async function forwardRequestToUpstream(
-	path: string,
 	method: string,
 	request: Request,
 	url: URL,
@@ -68,7 +68,7 @@ async function forwardRequestToUpstream(
 	upstreamConfig: UpstreamConfig
 ): Promise<Response> {
 	// Construct the upstream URL - append the path and search params to the base URL
-	const upstreamUrl = `${upstreamConfig.baseUrl}${path}${url.search}`;
+	const upstreamUrl = `${upstreamConfig.baseUrl}${url.pathname}${url.search}`;
 	logger.info(`Proxying request to: ${upstreamUrl}`, 'Gateway');
 
 	try {

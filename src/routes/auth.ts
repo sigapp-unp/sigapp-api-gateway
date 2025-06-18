@@ -6,27 +6,30 @@ import { createErrorResponse, validateUrl, makeProxyResponse, logErrorResponseBo
  * Proxies all authentication requests directly to Supabase Auth API
  * No specific endpoint handling, just forwards the request
  *
- * @param path - The request path
- * @param method - The HTTP method
+ * @param requestUrl - The URL
  * @param request - The incoming HTTP request
  * @param jsonBody - The request body as a string
  * @param config - Supabase configuration
  * @returns Response from Supabase Auth API
  */
-export async function proxyAuthRequest(
-	path: string,
-	method: string,
-	request: Request,
-	jsonBody: string | null,
-	{ url, anonKey }: SupabaseConfig
-): Promise<Response> {
+export async function handleAuthRoute({
+	requestUrl,
+	request,
+	jsonBody,
+	supabaseConfig,
+}: {
+	requestUrl: URL;
+	request: Request;
+	jsonBody: string | null;
+	supabaseConfig: SupabaseConfig;
+}): Promise<Response> {
 	try {
 		// Extract search params from original URL
 		const originalUrl = new URL(request.url);
 		const searchParams = originalUrl.search;
 
 		// Create auth endpoint URL by combining Supabase URL and the original path + query params
-		const endpoint = `${url}${path}${searchParams}`;
+		const endpoint = `${supabaseConfig.url}${requestUrl.pathname}${searchParams}`;
 
 		logger.info(`Proxying auth request to: ${endpoint}`, 'Auth');
 
@@ -36,7 +39,7 @@ export async function proxyAuthRequest(
 		// Prepare headers for auth request
 		const headers: Record<string, string> = {
 			'Content-Type': request.headers.get('Content-Type') ?? 'application/json',
-			apikey: anonKey,
+			apikey: supabaseConfig.anonKey,
 			// 'X-Client-Info': 'sigapp-proxy',
 		};
 
@@ -47,13 +50,13 @@ export async function proxyAuthRequest(
 			logger.debug(`Using provided Authorization header: ${authHeader.startsWith('Bearer') ? 'Bearer [REDACTED]' : '[REDACTED]'}`, 'Auth');
 		}
 
-		logger.debug(`Auth request method: ${method}`, 'Auth');
+		logger.debug(`Auth request method: ${request.method}`, 'Auth');
 
 		// Make request to Supabase Auth API
 		const response = await fetch(endpoint, {
-			method,
+			method: request.method,
 			headers,
-			body: ['GET', 'HEAD'].includes(method) ? undefined : jsonBody,
+			body: ['GET', 'HEAD'].includes(request.method) ? undefined : jsonBody,
 		});
 
 		logger.info(`Auth response status: ${response.status} ${response.statusText}`, 'Auth');
@@ -70,32 +73,4 @@ export async function proxyAuthRequest(
 		logger.error(`Error proxying auth request: ${err}`, 'Auth');
 		return createErrorResponse('Authentication service unavailable', err instanceof Error ? err.message : 'Unknown error', 500);
 	}
-}
-
-/**
- * Function for handling all authentication routes
- * Simply checks if it's an auth route and forwards the request
- *
- * @param path - The request path
- * @param method - The HTTP method
- * @param request - The incoming request
- * @param config - Supabase configuration
- * @param jsonBody - The parsed request body
- * @returns Response for the authentication route or null if not an auth route
- */
-export async function handleAuthRoutes(
-	path: string,
-	method: string,
-	request: Request,
-	config: SupabaseConfig,
-	jsonBody: string | null
-): Promise<Response | null> {
-	// Only handle auth-related paths
-	if (!path.startsWith('/auth/')) {
-		return null;
-	}
-
-	// Directly proxy all auth requests to Supabase
-	logger.info(`Handling auth route: ${path}`, 'Auth');
-	return proxyAuthRequest(path, method, request, jsonBody, config);
 }
