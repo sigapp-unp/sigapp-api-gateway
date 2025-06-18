@@ -1,42 +1,127 @@
 # 🧠 Arquitectura
 
-**Flutter + Cloudflare Worker como API Gateway + Supabase Auth
-con Validación JWT local y enrutamiento dinámico a múltiples APIs**
+\*\*Flutter + Cloudfla## 🎯 Arquitectura Modular (Nueva)
+
+### **Separación de Responsabilidades**
+
+El Worker ahora está organizado en **3 módulos independientes**:
+
+| Módulo      | Ruta       | Responsabilidad                      | Autenticación   |
+| ----------- | ---------- | ------------------------------------ | --------------- |
+| **Tools**   | `/tools/*` | Herramientas académicas customizadas | ❌ Sin JWT      |
+| **Auth**    | `/auth/*`  | Proxy puro a Supabase Auth           | ❌ Sin JWT      |
+| **Gateway** | `/*`       | Routing a servicios externos         | ✅ Requiere JWT |
+
+### **Módulo Tools** 🔧
+
+**Propósito**: Funcionalidad académica específica del dominio universitario
+
+```typescript
+// Estructura del módulo
+src/routes/tools.ts              → Router de herramientas
+src/helpers/external-services.ts → Lógica de validación académica
+```
+
+**Endpoints disponibles**:
+
+- `POST /tools/password-reset` → Reset de contraseña con validación UNP
+
+**Flujo de Password Reset**:
+
+1. 🔍 **Buscar usuario**: `{academicUsername}@sigapp.dev` → `userId` en Supabase
+2. ✅ **Validar académico**: POST a `academico.unp.edu.pe` (requiere status 302)
+3. 🔄 **Actualizar contraseña**: PUT a Supabase Admin API con service role
+
+**Características**:
+
+- ❌ **No requiere JWT**: Son herramientas administrativas internas
+- 🔐 **Usa service role**: Acceso directo a Supabase Admin API
+- 🎓 **Dominio académico**: Específico para validación contra sistema UNP
+- 📈 **Escalable**: Fácil agregar más herramientas académicas
+
+### **Módulo Auth** 🔐
+
+**Propósito**: Proxy transparente a Supabase Auth (sin lógica custom)
+
+```typescript
+// Comportamiento
+src/routes/auth.ts → Proxy puro, sin modificaciones
+```
+
+**Endpoints**:
+
+- `POST /auth/v1/signup` → Registro en Supabase
+- `POST /auth/v1/token` → Login/refresh tokens
+- `GET /auth/v1/user` → Info del usuario autenticado
+- `POST /auth/v1/logout` → Cerrar sesión
+
+**Características**:
+
+- 🔄 **Proxy transparente**: Forward directo a Supabase sin modificar
+- ❌ **Sin lógica custom**: Mantiene comportamiento original de Supabase
+- 🏗️ **Separación limpia**: Auth separado de herramientas custom
+
+### **Módulo Gateway** 🌐
+
+**Propósito**: Routing autenticado a servicios externos
+
+```typescript
+// Comportamiento original mantenido
+src/routes/gateway.ts → X-Upstream routing con JWT validation
+```
+
+**Headers requeridos**:
+
+- `Authorization: Bearer <jwt_token>`
+- `X-Upstream: <service_name>`
+
+**Servicios disponibles**:
+
+- `X-Upstream: supabase` → Supabase REST API
+- `X-Upstream: openai` → OpenAI API
+- `X-Upstream: <other>` → Otros servicios configurados
+
+---
+
+## 🔑 Claves de la Nueva ArquitecturaWorker como API Gateway + Supabase Auth + Tools Académicos
+
+con Validación JWT local y enrutamiento modular a múltiples servicios\*\*
 
 ---
 
 ## ⚙️ Componentes
 
-| Elemento               | Función                                                         |
-| ---------------------- | --------------------------------------------------------------- |
-| **Flutter**            | UI + manejador de sesión (`access_token`)                       |
-| **Cloudflare Worker**  | API Gateway + verificador de identidad                          |
-| **Supabase Auth**      | Emisor de tokens JWT firmados                                   |
-| **Supabase DB**        | Base de datos PostgreSQL, accedida vía REST, sin RLS            |
-| **Servicios externos** | OpenAI, servicios internos, etc. accedidos a través del Gateway |
-| **`X-Upstream`**       | Header que indica a qué servicio apuntar (`openai`, `db`, etc.) |
+| Elemento                  | Función                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| **Flutter**               | UI + manejador de sesión (`access_token`)                             |
+| **Cloudflare Worker**     | API Gateway + verificador de identidad + herramientas académicas      |
+| **Supabase Auth**         | Emisor de tokens JWT firmados                                         |
+| **Supabase DB**           | Base de datos PostgreSQL, accedida vía REST, sin RLS                  |
+| **Sistema Académico UNP** | Validación externa de credenciales académicas                         |
+| **Servicios externos**    | OpenAI, servicios internos, etc. accedidos a través del Gateway       |
+| **`X-Upstream`**          | Header que indica a qué servicio apuntar (`openai`, `supabase`, etc.) |
 
 ---
 
 # 📐 Flujo General
 
 ```
-[Flutter] → request con JWT + X-Upstream (Authorization: Bearer xxxxx, X-Upstream: openai)
-       ↓
-[Worker] → verifica JWT localmente usando clave pública o secreto compartido
-       ↓
-[Worker] → resuelve X-Upstream → endpoint autorizado según upstreamServices
-       ↓
-[Worker] → opcionalmente verifica permisos por subject (ID de usuario)
-       ↓
-[Worker] → reenvía la request al destino (OpenAI, Supabase, otros)
-       ↓
-[Destino] ← responde
+[Flutter] → request según el tipo:
+       ├── /tools/*     → Herramientas académicas (password reset, validación)
+       ├── /auth/*      → Autenticación Supabase (login, signup, refresh)
+       └── /*           → Gateway con JWT + X-Upstream → servicios externos
+                    ↓
+[Worker] → Router en index.ts decide el módulo:
+       ├── handleToolsRoute()     → Custom academic tools
+       ├── handleAuthRoute()      → Pure Supabase auth proxy
+       └── handleUpstreamRoute()  → Service gateway con JWT validation
+                    ↓
+[Destino] ← responde según el flujo
 ```
 
 ---
 
-# 🔑 Claves de esta arquitectura
+# 🎯 Arquitectura Modular (Nueva)
 
 ## ✅ **1. El JWT se valida de dos formas**
 
@@ -162,27 +247,27 @@ Headers:
 
 ---
 
-# 🧰 Implementación actual
+## 🧰 Implementación Actual
 
-1. **Gateway dinámico**:
+### **1. Router Principal** (`src/index.ts`)
 
-   - Configuración mediante el objeto `upstreamServices` en la aplicación
-   - Cada upstream define `baseUrl` y cabeceras específicas
-   - Las claves API sensibles se configuran como variables de entorno secretas
-   - Se usan placeholders `${VARIABLE}` que se reemplazan con valores reales en tiempo de ejecución
+```typescript
+// Routing modular basado en prefijo de ruta
+if (requestUrl.pathname.startsWith('/tools/')) {
+	return await handleToolsRoute({ requestUrl, request, jsonBody, supabaseConfig });
+}
+if (requestUrl.pathname.startsWith('/auth/')) {
+	return await handleAuthRoute({ requestUrl, request, jsonBody, supabaseConfig });
+}
+return await handleUpstreamRoute({ request, requestUrl, jsonBody, env });
+```
 
-2. **Control de acceso**:
+### **2. Configuración de Servicios Externos**
 
-   - Verificación por `sub` (ID de usuario) en el JWT
-   - Configuración granular por upstream
-   - Compatibilidad con flujo anterior para Supabase DB
-
-3. **Ejemplo de configuración**:
-
-```ts
+```typescript
 export const upstreamServices = {
 	supabase: {
-		baseUrl: '${SUPABASE_URL}',
+		baseUrl: '${SUPABASE_URL}/rest/v1',
 		headers: {
 			apikey: '${SUPABASE_SERVICE_ROLE_KEY}',
 			Authorization: 'Bearer ${SUPABASE_SERVICE_ROLE_KEY}',
@@ -198,16 +283,116 @@ export const upstreamServices = {
 };
 ```
 
-4. **Configuración de secretos**:
+### **3. Configuración de Variables de Entorno**
+
+#### **Desarrollo Local** (`.dev.vars`)
 
 ```bash
-# Las claves API y secretos se configuran por separado
+SUPABASE_URL=https://proyecto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_JWT_SECRET=secret...
+OPENAI_API_KEY=sk-...
+```
+
+#### **Producción/Testing Remoto** (`wrangler secret put`)
+
+```bash
+wrangler secret put SUPABASE_URL
 wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 wrangler secret put SUPABASE_ANON_KEY
 wrangler secret put SUPABASE_JWT_SECRET
 wrangler secret put OPENAI_API_KEY
 ```
 
-5. **Inyección automática de credenciales**:
+### **4. Estructura de Archivos**
 
-El código detecta automáticamente qué upstream se está utilizando e inyecta las credenciales correspondientes desde las variables de entorno secretas, manteniendo las claves API fuera de la configuración JSON.
+```
+src/
+├── index.ts                     # Router principal
+├── routes/
+│   ├── tools.ts                 # Herramientas académicas
+│   ├── auth.ts                  # Proxy a Supabase Auth
+│   └── gateway.ts               # Gateway con X-Upstream
+├── helpers/
+│   ├── external-services.ts     # Lógica de password reset
+│   └── http.ts                  # Utilidades HTTP
+├── config/
+│   └── proxy.ts                 # Configuración upstreamServices
+└── types.ts                     # Definiciones de tipos
+```
+
+### **5. Validación JWT (Módulo Gateway)**
+
+```typescript
+// Validación de dos etapas
+try {
+	// Primero: secreto compartido
+	const payload = await jwtVerify(token, secret);
+} catch {
+	// Segundo: clave pública JWK
+	const { payload } = await jwtVerify(token, JWKS);
+}
+```
+
+### **6. Inyección Automática de Credenciales**
+
+Las variables con formato `${VARIABLE}` se reemplazan automáticamente:
+
+```typescript
+// Configuración → Ejecución
+'Bearer ${OPENAI_API_KEY}' → 'Bearer sk-abc123...'
+'${SUPABASE_URL}/rest/v1' → 'https://proyecto.supabase.co/rest/v1'
+```
+
+---
+
+## 🚀 Despliegue y Ambientes
+
+### **Ambientes de Desarrollo**
+
+| Comando                 | Ambiente        | Variables       | URL              | Uso               |
+| ----------------------- | --------------- | --------------- | ---------------- | ----------------- |
+| `wrangler dev`          | Local           | `.dev.vars`     | `localhost:8787` | Desarrollo rápido |
+| `wrangler dev --remote` | Cloudflare Edge | Secrets remotos | `*.workers.dev`  | Testing real      |
+| `wrangler deploy`       | Cloudflare Edge | Secrets remotos | Producción       | Deploy final      |
+
+### **Configuración Recomendada**
+
+1. **Desarrollo**: Cada desarrollador usa `.dev.vars` local
+2. **Testing colaborativo**: `wrangler dev --remote` para compartir
+3. **Producción**: `wrangler deploy` con secrets remotos configurados
+
+### **Seguridad por Ambiente**
+
+- **Local**: Variables en `.dev.vars` (nunca committear)
+- **Remoto**: Variables en `wrangler secret put` (encriptado en Cloudflare)
+- **Separación clara**: Local vs remoto nunca se mezclan
+
+---
+
+## 📈 Roadmap y Extensiones Futuras
+
+### **Herramientas Académicas Planificadas**
+
+- `POST /tools/academic-validation` → Solo validar credenciales UNP
+- `GET /tools/user-lookup` → Buscar usuario por código académico
+- `POST /tools/bulk-operations` → Operaciones masivas de usuarios
+- `GET /tools/academic-status` → Status y datos académicos
+
+### **Mejoras de Arquitectura**
+
+- Rate limiting por endpoint
+- Caching de validaciones académicas
+- Métricas y observabilidad
+- Testing automatizado end-to-end
+
+### **Integraciones Futuras**
+
+- Más servicios académicos (biblioteca, pagos, etc.)
+- Servicios de AI específicos para educación
+- APIs de terceros para estudiantes
+
+---
+
+**💡 Esta arquitectura modular permite evolución incremental sin afectar funcionalidad existente**

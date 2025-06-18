@@ -4,12 +4,12 @@ import { createErrorResponse, validateUrl, makeProxyResponse, logErrorResponseBo
 
 /**
  * Proxies all authentication requests directly to Supabase Auth API
- * No specific endpoint handling, just forwards the request
+ * Pure proxy, no special handling of endpoints
  *
  * @param requestUrl - The URL
  * @param request - The incoming HTTP request
  * @param jsonBody - The request body as a string
- * @param config - Supabase configuration
+ * @param supabaseConfig - Supabase configuration
  * @returns Response from Supabase Auth API
  */
 export async function handleAuthRoute({

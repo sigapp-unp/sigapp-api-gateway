@@ -2,6 +2,7 @@ import { logger } from './logging';
 import { Env, SupabaseConfig } from './types';
 import { parseAndLogRequestBody, createErrorResponse } from './helpers/http';
 import { handleAuthRoute } from './routes/auth';
+import { handleToolsRoute } from './routes/tools';
 import { handleUpstreamRoute } from './routes/gateway';
 
 export default {
@@ -43,14 +44,19 @@ export default {
 
 			// Router: Direct requests to appropriate handlers based on path
 
-			// 1. Authentication endpoints - special case, direct proxy to Supabase auth
+			// 1. Tools endpoints - custom functionality like password reset, academic validation
+			if (requestUrl.pathname.startsWith('/tools/')) {
+				logger.info(`Handling tools route: ${requestUrl.pathname}`, 'Tools');
+				return await handleToolsRoute({ requestUrl, request, jsonBody, supabaseConfig });
+			}
+
+			// 2. Authentication endpoints - direct proxy to Supabase auth
 			if (requestUrl.pathname.startsWith('/auth/')) {
-				// Directly proxy all auth requests to Supabase
 				logger.info(`Handling auth route: ${requestUrl.pathname}`, 'Auth');
 				return await handleAuthRoute({ requestUrl, request, jsonBody, supabaseConfig });
 			}
 
-			// 2. General routing based on X-Upstream header
+			// 3. General routing based on X-Upstream header
 			logger.info('Handling request via X-Upstream gateway', 'Router');
 			return await handleUpstreamRoute({ request, requestUrl, jsonBody, env });
 		} catch (err) {

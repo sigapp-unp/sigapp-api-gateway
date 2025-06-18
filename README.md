@@ -11,11 +11,29 @@ A secure Cloudflare Worker that acts as a gateway between the frontend and vario
 - **Act as API Gateway** for multiple services (Supabase, OpenAI, etc.) with unified authentication.
 - **Dynamic credential injection** via environment variables rather than hardcoded configuration.
 
-## 🚀 How it works
+## 🏗️ Architecture
+
+### **Routing Flow**
 
 ```txt
-[Client] → sends access_token + X-Upstream → [Worker] → validates JWT → forwards to appropriate service
+[Request] → index.ts → Route Decision:
+                    ├── /tools/*     → handleToolsRoute()     → Custom tools
+                    ├── /auth/*      → handleAuthRoute()      → Supabase Auth
+                    └── /*           → handleUpstreamRoute()  → Service Gateway
 ```
+
+### **Module Separation**
+
+- **🔧 `/tools/*`**: Custom academic functionality (password reset, validation)
+- **🔐 `/auth/*`**: Pure Supabase Auth proxy (no custom logic)
+- **🌐 `/*`**: General service gateway with X-Upstream routing
+
+This architecture ensures:
+
+- Clean separation of concerns
+- Easy addition of new tools
+- Supabase auth remains untouched
+- Scalable for future academic features
 
 ## 🏗️ Creation
 
@@ -36,28 +54,77 @@ npm uninstall @cloudflare/workers-types
 npm run cf-typegen # Verify
 ```
 
-## ⚙️ Setup
+## ⚙️ Setup & Configuration
 
-### Manually
+### 🎯 **IMPORTANTE: Entender los 3 Ambientes**
 
-Please do not end SUPABASE_URL with a trailing '/'
+Cloudflare Workers tiene **3 modos diferentes** que usan **configuraciones diferentes**:
+
+| Comando                 | Ambiente            | Variables             | URL                     | Propósito         |
+| ----------------------- | ------------------- | --------------------- | ----------------------- | ----------------- |
+| `wrangler dev`          | **Local**           | `.dev.vars`           | `localhost:8787`        | Desarrollo rápido |
+| `wrangler dev --remote` | **Remoto Temporal** | `wrangler secret put` | `*.workers.dev`         | Testing real      |
+| `wrangler deploy`       | **Producción**      | `wrangler secret put` | `tu-worker.workers.dev` | Deploy final      |
+
+### 🔧 **Configuración por Ambiente**
+
+#### **1. Desarrollo Local** 💻
+
+Para `wrangler dev` (desarrollo local):
 
 ```bash
-npm install
-wrangler secret put SUPABASE_URL
-wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-wrangler secret put SUPABASE_ANON_KEY
-wrangler secret put SUPABASE_JWT_SECRET
-wrangler secret put OPENAI_API_KEY
-# Add additional API keys for other services as needed
+# Crear archivo .dev.vars (NO commitear a git)
+echo "SUPABASE_URL=https://tu-proyecto.supabase.co" > .dev.vars
+echo "SUPABASE_SERVICE_ROLE_KEY=eyJ..." >> .dev.vars
+echo "SUPABASE_ANON_KEY=eyJ..." >> .dev.vars
+echo "SUPABASE_JWT_SECRET=tu-jwt-secret" >> .dev.vars
+echo "OPENAI_API_KEY=sk-..." >> .dev.vars
+
+# Ejecutar localmente
+wrangler dev
 ```
 
-### Using .env file
+⚠️ **IMPORTANTE**: Agrega `.dev.vars` a tu `.gitignore`
 
-1. Duplicate [.env.example](.env.example) as `.env` and set your values.
-2. Execute script.
+#### **2. Remoto (Testing + Producción)** 🌐
 
-- Linux / WSL / Mac (bash, zsh, sh)
+Para `wrangler dev --remote` y `wrangler deploy`:
+
+##### **Opción A: Manual** (Recomendado para seguridad)
+
+```bash
+# Configurar secrets uno por uno
+wrangler secret put SUPABASE_URL
+# Pegar: https://tu-proyecto.supabase.co
+
+wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# Pegar: eyJ...
+
+wrangler secret put SUPABASE_ANON_KEY
+# Pegar: eyJ...
+
+wrangler secret put SUPABASE_JWT_SECRET
+# Pegar: tu-jwt-secret
+
+wrangler secret put OPENAI_API_KEY
+# Pegar: sk-...
+```
+
+##### **Opción B: Script Automático** (⚠️ Cuidado con logs)
+
+1. **Duplica `.env.example` como `secrets.env`** y configura tus valores:
+
+```bash
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_JWT_SECRET=tu-jwt-secret
+OPENAI_API_KEY=sk-...
+```
+
+2. **Ejecuta el script**:
+
+**Linux/Mac/WSL:**
 
 ```bash
 while IFS='=' read -r key value; do
@@ -67,9 +134,9 @@ while IFS='=' read -r key value; do
 done < secrets.env
 ```
 
-- Windows (PowerShell)
+**Windows PowerShell:**
 
-```ps1
+```powershell
 Get-Content secrets.env | ForEach-Object {
   if ($_ -match '^([^=]+)=(.+)$') {
     $key = $matches[1].Trim()
@@ -78,6 +145,42 @@ Get-Content secrets.env | ForEach-Object {
   }
 }
 ```
+
+### 📋 **Verificar Configuración**
+
+```bash
+# Ver secrets remotos configurados
+wrangler secret list
+
+# Ver tu cuenta actual
+wrangler whoami
+
+# Ver configuración del worker
+cat wrangler.toml
+```
+
+### ⚠️ **Puntos Críticos del Equipo**
+
+1. **`.dev.vars` es SOLO para desarrollo local** - nunca se sube a git
+2. **`wrangler secret put` es para producción** - se guarda en Cloudflare
+3. **Cambiar un secret afecta inmediatamente** al worker desplegado (sin redeploy)
+4. **`--remote` y `deploy` comparten los mismos secrets**
+5. **No terminar `SUPABASE_URL` con `/`** (muy importante)
+
+### 🚨 **Troubleshooting Común**
+
+**❌ Error: "Missing environment variables"**
+
+- Revisa que tengas todos los secrets configurados: `wrangler secret list`
+
+**❌ Error: Worker funciona local pero falla remoto**
+
+- Probablemente faltan secrets remotos, configúralos con `wrangler secret put`
+
+**❌ Error: CORS o 401 en requests**
+
+- Verifica que `SUPABASE_URL` no termine con `/`
+- Confirma que `SUPABASE_SERVICE_ROLE_KEY` sea el correcto
 
 ## Important concepts
 
@@ -119,23 +222,84 @@ export const upstreamServices = {
 - **Safe credential handling**: API keys stored as isolated environment secrets
 - **Secure routing**: `X-Upstream` only allows predefined service routes
 
-## Test and Deployment
+## 🧪 Testing & Deployment
 
-### 🧪 Local testing
+### **Comandos y Sus Diferencias**
+
+| Comando                              | Dónde Ejecuta    | Variables       | Cuándo Usar                        |
+| ------------------------------------ | ---------------- | --------------- | ---------------------------------- |
+| `wrangler dev`                       | Tu máquina local | `.dev.vars`     | Desarrollo rápido, debugging       |
+| `wrangler dev --remote --ip 0.0.0.0` | Cloudflare Edge  | Secrets remotos | Testing real, compartir con equipo |
+| `wrangler deploy`                    | Cloudflare Edge  | Secrets remotos | Deploy a producción                |
+
+### **1. Desarrollo Local** 💻
 
 ```bash
-# Remote mode (requires workers.dev subdomain)
+# Asegúrate de tener .dev.vars configurado
+wrangler dev
+
+# ✅ Ventajas:
+# - Rápido reload
+# - Debugging fácil
+# - No consume quota de Cloudflare
+
+# ❌ Limitaciones:
+# - Solo accessible desde tu máquina
+# - No usa secrets remotos
+```
+
+### **2. Testing Remoto** 🌐
+
+```bash
+# Testing en el edge real de Cloudflare
 wrangler dev --remote --ip 0.0.0.0
 
-# Or use local mode
-wrangler dev
+# ✅ Ventajas:
+# - Ambiente real de Cloudflare
+# - URL pública para compartir con el equipo
+# - Usa secrets remotos (como producción)
+# - Testing de latencia real
+
+# ⚠️ Notas:
+# - Requiere secrets configurados con `wrangler secret put`
+# - Consume quota de requests de Cloudflare
 ```
 
-### 🚢 Deploy
+### **3. Deploy a Producción** 🚀
 
 ```bash
+# Deploy permanente
 wrangler deploy
+
+# ✅ Resultado:
+# - Worker disponible 24/7
+# - URL estable para frontend
+# - Usa secrets remotos configurados
 ```
+
+### **Flujo Recomendado para el Equipo** �
+
+1. **Desarrollo individual**: `wrangler dev` (cada dev con su `.dev.vars`)
+2. **Testing colaborativo**: `wrangler dev --remote` (URL compartida)
+3. **Deploy a staging/prod**: `wrangler deploy`
+
+### **URLs Generadas**
+
+```bash
+# Local
+wrangler dev
+# → http://localhost:8787
+
+# Remote testing
+wrangler dev --remote --ip 0.0.0.0
+# → https://sigapp-db-proxy.tu-usuario.workers.dev
+
+# Production
+wrangler deploy
+# → https://sigapp-db-proxy.tu-usuario.workers.dev
+```
+
+**💡 Tip**: El `--ip 0.0.0.0` permite que otros en tu red local también accedan al worker remoto.
 
 Example output:
 
@@ -155,7 +319,7 @@ Current Version ID: dd190695-e8f3-43c3-a9d7-d9cd98ab477a
 
 ## 📦 Endpoints
 
-### `ANY /auth/*`
+### `ANY /auth/*` - Supabase Auth Proxy
 
 Proxies directly to Supabase Auth API:
 
@@ -166,7 +330,39 @@ Proxies directly to Supabase Auth API:
   - `/auth/v1/token?grant_type=password` → Login endpoint
   - `/auth/v1/token?grant_type=refresh_token` → Token refresh endpoint
 
-### `ANY /<any-route>`
+### `POST /tools/*` - Custom Academic Tools 🆕
+
+Custom functionality for academic validation and user management:
+
+#### **`POST /tools/password-reset`**
+
+Secure password reset with academic validation:
+
+```http
+POST /tools/password-reset
+Content-Type: application/json
+
+{
+  "academicUsername": "0812024054",
+  "academicPassword": "student_password"
+}
+```
+
+**Flow:**
+
+1. 🔍 Looks up user by email: `{academicUsername}@sigapp.dev`
+2. ✅ Validates credentials against UNP academic system
+3. 🔄 Updates password in Supabase if validation succeeds
+
+**Response codes:**
+
+- `200`: Password updated successfully
+- `400`: Invalid request format
+- `401`: Academic credentials invalid
+- `404`: User not found in Supabase
+- `500`: Server or validation error
+
+### `ANY /<any-route>` - Service Gateway
 
 With the `X-Upstream` header:
 
