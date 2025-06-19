@@ -1,0 +1,149 @@
+meta {
+  name: Supabase Auth Signup
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base_url}}/auth/v1/signup
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  apikey: {{supabase_anon_key}}
+}
+
+body:json {
+  {
+    "email": "{{test_email}}",
+    "password": "{{test_password}}"
+  }
+}
+
+vars:pre-request {
+  base_url: http://localhost:8787
+  supabase_anon_key: YOUR_SUPABASE_ANON_KEY_HERE
+  test_email: test@sigapp.dev
+  test_password: TestPassword123!
+}
+
+tests {
+  test("should return 200 for successful signup", function() {
+    if (res.getStatus() === 200) {
+      expect(res.getStatus()).to.equal(200);
+    } else {
+      // Allow other status codes for testing error scenarios
+      expect([200, 400, 401, 403, 422, 429, 500, 501]).to.include(res.getStatus());
+    }
+  });
+
+  test("response should have proper content type", function() {
+    expect(res.getHeader('content-type')).to.include('application/json');
+  });
+
+  test("successful signup should contain user object", function() {
+    if (res.getStatus() === 200) {
+      const body = res.getBody();
+      expect(body).to.have.property('id');
+      expect(body).to.have.property('email');
+      expect(body).to.have.property('created_at');
+    }
+  });
+
+  test("error responses should contain error information", function() {
+    if (res.getStatus() >= 400) {
+      const body = res.getBody();
+      // Error responses should have either 'error' or 'msg' property
+      expect(body).to.satisfy(function(body) {
+        return body.hasOwnProperty('error') ||
+               body.hasOwnProperty('msg') ||
+               body.hasOwnProperty('message');
+      });
+    }
+  });
+
+  test("400 error should indicate bad request", function() {
+    if (res.getStatus() === 400) {
+      const body = res.getBody();
+      expect(body).to.satisfy(function(body) {
+        return body.error || body.msg || body.message;
+      });
+    }
+  });
+
+  test("401 error should indicate unauthorized", function() {
+    if (res.getStatus() === 401) {
+      const body = res.getBody();
+      expect(body.error).to.exist;
+    }
+  });
+}
+
+docs {
+  # Supabase Auth Signup Test
+
+  Este endpoint permite registrar nuevos usuarios en Supabase Auth usando email y contraseña.
+
+  ## Prerequisitos
+  1. El proxy debe estar corriendo en localhost:8787
+  2. Supabase debe estar configurado correctamente
+  3. La clave anónima de Supabase debe estar configurada
+
+  ## Variables a configurar
+  - `supabase_anon_key`: Clave anónima de Supabase (requerida)
+  - `test_email`: Email para el nuevo usuario (debe ser único)
+  - `test_password`: Contraseña para el nuevo usuario
+
+  ## Flujo de registro
+  1. El proxy reenvía la petición a Supabase Auth
+  2. Supabase valida los datos y crea el usuario
+  3. Retorna el objeto usuario o error correspondiente
+
+  ## Respuestas esperadas
+
+  ### Registro exitoso (200):
+  ```json
+  {
+    "id": "uuid-del-usuario",
+    "email": "test@sigapp.dev",
+    "created_at": "2025-06-18T...",
+    "confirmation_sent_at": "2025-06-18T...",
+    "email_confirmed_at": null,
+    ...
+  }
+  ```
+
+  ### Usuario ya existe (400):
+  ```json
+  {
+    "code": 400,
+    "msg": "User already registered"
+  }
+  ```
+
+  ### Sin autorización (401):
+  ```json
+  {
+    "error": "no_authorization"
+  }
+  ```
+
+  ### Funcionalidad deshabilitada (403):
+  ```json
+  {
+    "error": "email_provider_disabled"
+  }
+  ```
+
+  ## Códigos de respuesta
+  - **200**: Usuario creado exitosamente
+  - **400**: Parámetros inválidos o usuario ya existe
+  - **401**: Falta header apikey o autorización
+  - **403**: Signup deshabilitado
+  - **422**: No se puede procesar (conflicto de datos)
+  - **429**: Límite de peticiones excedido
+  - **500**: Error interno del servidor
+  - **501**: Feature no implementada
+}

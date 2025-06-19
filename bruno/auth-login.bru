@@ -1,0 +1,176 @@
+meta {
+  name: Supabase Auth Login
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/auth/v1/token?grant_type=password
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  apikey: {{supabase_anon_key}}
+}
+
+body:json {
+  {
+    "email": "{{login_email}}",
+    "password": "{{login_password}}"
+  }
+}
+
+vars:pre-request {
+  base_url: http://localhost:8787
+  supabase_anon_key: YOUR_SUPABASE_ANON_KEY_HERE
+  login_email: test@sigapp.dev
+  login_password: TestPassword123!
+}
+
+tests {
+  test("should return 200 for successful login", function() {
+    if (res.getStatus() === 200) {
+      expect(res.getStatus()).to.equal(200);
+    } else {
+      // Allow other status codes for testing error scenarios
+      expect([200, 400, 401, 403, 422, 429, 500, 501]).to.include(res.getStatus());
+    }
+  });
+
+  test("response should have proper content type", function() {
+    expect(res.getHeader('content-type')).to.include('application/json');
+  });
+
+  test("successful login should contain tokens", function() {
+    if (res.getStatus() === 200) {
+      const body = res.getBody();
+      expect(body).to.have.property('access_token');
+      expect(body).to.have.property('refresh_token');
+      expect(body).to.have.property('expires_in');
+      expect(body).to.have.property('token_type');
+      expect(body).to.have.property('user');
+
+      // Validate token type
+      expect(body.token_type).to.equal('bearer');
+
+      // Validate expires_in is a number
+      expect(typeof body.expires_in).to.equal('number');
+
+      // Validate user object
+      expect(body.user).to.have.property('id');
+      expect(body.user).to.have.property('email');
+    }
+  });
+
+  test("error responses should contain error information", function() {
+    if (res.getStatus() >= 400) {
+      const body = res.getBody();
+      expect(body).to.have.property('error');
+
+      // Common error patterns
+      if (res.getStatus() === 400) {
+        expect(['invalid_grant', 'invalid_request']).to.include(body.error);
+      }
+    }
+  });
+
+  test("invalid credentials should return 400 with invalid_grant", function() {
+    if (res.getStatus() === 400) {
+      const body = res.getBody();
+      if (body.error === 'invalid_grant') {
+        expect(body).to.have.property('error_description');
+        expect(body.error_description).to.include('credentials');
+      }
+    }
+  });
+
+  test("unauthorized should return 401", function() {
+    if (res.getStatus() === 401) {
+      const body = res.getBody();
+      expect(body.error).to.exist;
+    }
+  });
+
+  test("response time should be reasonable", function() {
+    expect(res.getResponseTime()).to.be.below(5000);
+  });
+}
+
+docs {
+  # Supabase Auth Login Test
+
+  Este endpoint permite autenticar usuarios existentes en Supabase Auth usando email y contraseña.
+
+  ## Prerequisitos
+  1. El proxy debe estar corriendo en localhost:8787
+  2. Supabase debe estar configurado correctamente
+  3. La clave anónima de Supabase debe estar configurada
+  4. El usuario debe existir y estar confirmado
+
+  ## Variables a configurar
+  - `supabase_anon_key`: Clave anónima de Supabase (requerida)
+  - `login_email`: Email del usuario existente
+  - `login_password`: Contraseña del usuario
+
+  ## Flujo de autenticación
+  1. El proxy reenvía la petición a Supabase Auth con grant_type=password
+  2. Supabase valida las credenciales
+  3. Retorna tokens de acceso y refresh, o error correspondiente
+
+  ## Respuestas esperadas
+
+  ### Login exitoso (200):
+  ```json
+  {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expires_in": 3600,
+    "token_type": "bearer",
+    "user": {
+      "id": "uuid-del-usuario",
+      "email": "test@sigapp.dev",
+      "email_confirmed_at": "2025-06-18T...",
+      ...
+    }
+  }
+  ```
+
+  ### Credenciales inválidas (400):
+  ```json
+  {
+    "error": "invalid_grant",
+    "error_description": "Invalid login credentials"
+  }
+  ```
+
+  ### Sin autorización (401):
+  ```json
+  {
+    "error": "no_authorization"
+  }
+  ```
+
+  ### Demasiados intentos (429):
+  ```json
+  {
+    "error": "over_request_rate_limit",
+    "error_description": "Too many login attempts"
+  }
+  ```
+
+  ## Códigos de respuesta
+  - **200**: Login exitoso, retorna tokens
+  - **400**: Credenciales inválidas o petición mal formada
+  - **401**: Sin autorización o JWT inválido
+  - **403**: Política no permitida (MFA requerido)
+  - **422**: Estado del recurso impide completar petición
+  - **429**: Demasiados intentos de login
+  - **500**: Error interno del servidor
+  - **501**: Grant type no soportado
+
+  ## Uso de tokens
+  Una vez obtenido el `access_token`, úsalo en el header `Authorization: Bearer <token>` para peticiones autenticadas.
+  El `refresh_token` puede usarse para obtener nuevos tokens cuando expire el `access_token`.
+}

@@ -13,10 +13,13 @@ async function findUserByAcademicUsername(
 	supabaseConfig: SupabaseConfig
 ): Promise<{ userId: string | null; message: string }> {
 	const email = `${academicUsername}@sigapp.dev`;
+	const endpoint = `${supabaseConfig.url}/rest/v1/users?select=id&email=eq.${encodeURIComponent(email)}`;
+
 	logger.info(`Looking up user with email: ${email}`, 'PasswordReset');
+	logger.debug(`Using endpoint: ${endpoint}`, 'PasswordReset');
 
 	try {
-		const response = await fetch(`${supabaseConfig.url}/auth/v1/admin/users?email=${encodeURIComponent(email)}`, {
+		const response = await fetch(endpoint, {
 			method: 'GET',
 			headers: {
 				'Content-Type': 'application/json',
@@ -25,17 +28,32 @@ async function findUserByAcademicUsername(
 			},
 		});
 
+		logger.info(`REST API response status: ${response.status} ${response.statusText}`, 'PasswordReset');
+
 		if (!response.ok) {
-			logger.error(`Failed to search user: ${response.status} ${response.statusText}`, 'PasswordReset');
+			// Try to get error details from response body
+			let errorDetails = response.statusText;
+			try {
+				const errorBody = await response.text();
+				if (errorBody) {
+					logger.error(`REST API error body: ${errorBody}`, 'PasswordReset');
+					errorDetails = `${response.statusText} - ${errorBody}`;
+				}
+			} catch (bodyError) {
+				logger.debug(`Could not read error body: ${bodyError}`, 'PasswordReset');
+			}
+
+			logger.error(`Error fetching user from ${endpoint}: ${response.status} ${errorDetails}`, 'PasswordReset');
 			return {
 				userId: null,
-				message: `Failed to search for user: ${response.statusText}`,
+				message: `Failed to search for user: ${response.status} ${errorDetails}`,
 			};
 		}
 
-		const data = (await response.json()) as { users?: Array<{ id: string; email: string }> };
+		const users = (await response.json()) as Array<{ id: string }>;
+		logger.debug(`Found ${users.length} users in REST API response`, 'PasswordReset');
 
-		if (!data.users || data.users.length === 0) {
+		if (users.length === 0) {
 			logger.warn(`No user found with email: ${email}`, 'PasswordReset');
 			return {
 				userId: null,
@@ -43,7 +61,8 @@ async function findUserByAcademicUsername(
 			};
 		}
 
-		const userId = data.users[0].id;
+		// Here we have the exact uid
+		const userId = users[0].id;
 		logger.info(`Found user ${userId} for academic username ${academicUsername}`, 'PasswordReset');
 
 		return {
@@ -51,7 +70,7 @@ async function findUserByAcademicUsername(
 			message: `User found: ${userId}`,
 		};
 	} catch (error) {
-		logger.error(`Error searching for user: ${error}`, 'PasswordReset');
+		logger.error(`Error searching for user at ${endpoint}: ${error}`, 'PasswordReset');
 		return {
 			userId: null,
 			message: `Error searching for user: ${error instanceof Error ? error.message : String(error)}`,
