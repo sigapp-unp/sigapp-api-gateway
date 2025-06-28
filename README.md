@@ -127,23 +127,13 @@ OPENAI_API_KEY=sk-...
 **Linux/Mac/WSL:**
 
 ```bash
-while IFS='=' read -r key value; do
-  if [ -n "$key" ] && [ -n "$value" ]; then
-    echo "$value" | wrangler secret put "$key"
-  fi
-done < secrets.env
+./secrets/put.bash
 ```
 
 **Windows PowerShell:**
 
 ```powershell
-Get-Content secrets.env | ForEach-Object {
-  if ($_ -match '^([^=]+)=(.+)$') {
-    $key = $matches[1].Trim()
-    $value = $matches[2].Trim()
-    $value | wrangler secret put $key
-  }
-}
+.\secrets\put.ps1
 ```
 
 ### 📋 **Verificar Configuración**
@@ -226,11 +216,11 @@ export const upstreamServices = {
 
 ### **Comandos y Sus Diferencias**
 
-| Comando                              | Dónde Ejecuta    | Variables       | Cuándo Usar                        |
-| ------------------------------------ | ---------------- | --------------- | ---------------------------------- |
-| `wrangler dev`                       | Tu máquina local | `.dev.vars`     | Desarrollo rápido, debugging       |
-| `wrangler dev --remote --ip 0.0.0.0` | Cloudflare Edge  | Secrets remotos | Testing real, compartir con equipo |
-| `wrangler deploy`                    | Cloudflare Edge  | Secrets remotos | Deploy a producción                |
+| Comando                              | Dónde Ejecuta    | Variables       | Cuándo Usar                  |
+| ------------------------------------ | ---------------- | --------------- | ---------------------------- |
+| `wrangler dev --ip 0.0.0.0`          | Tu máquina local | `.dev.vars`     | Desarrollo rápido, debugging |
+| `wrangler dev --remote --ip 0.0.0.0` | Cloudflare Edge  | Secrets remotos | Testing real                 |
+| `wrangler deploy`                    | Cloudflare Edge  | Secrets remotos | Deploy a producción          |
 
 ### **1. Desarrollo Local** 💻
 
@@ -401,6 +391,13 @@ Content-Type: application/json
 1. Add the service configuration to `upstreamServices` in `src/config/proxy.ts`
 2. Set any required API keys or secrets as environment variables
 3. Deploy the worker with the updated configuration
+
+---
+
+## TODO
+
+- [ ] Separar db prod de db dev, al menos de manera más fácil de configurar en ambientes
+- [ ] Considerar dejar de usar .env o al menos aumentar validaciones y restricciones estandarizadas
 
 ---
 

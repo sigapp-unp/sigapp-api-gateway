@@ -171,4 +171,6 @@ dist
 .dev.vars
 .wrangler/
 
-.env
+# custom
+
+secrets/secrets.env

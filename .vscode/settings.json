@@ -1,6 +1,10 @@
 {
 	"files.associations": {
-		"wrangler.json": "jsonc"
+		"wrangler.json": "jsonc",
+		"*.env": "properties",
+		"*.env.*": "properties",
+		"*.vars": "properties",
+		"*.vars.*": "properties"
 	},
 	"cSpell.words": ["supabase"]
 }
