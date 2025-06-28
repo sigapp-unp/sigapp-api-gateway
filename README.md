@@ -56,121 +56,48 @@ npm run cf-typegen # Verify
 
 ## ⚙️ Setup & Configuration
 
-### 🎯 **IMPORTANTE: Entender los 3 Ambientes**
+### 🔧 **Variables de Entorno**
 
-Cloudflare Workers tiene **3 modos diferentes** que usan **configuraciones diferentes**:
+**Variables requeridas:**
 
-| Comando                 | Ambiente            | Variables             | URL                     | Propósito         |
-| ----------------------- | ------------------- | --------------------- | ----------------------- | ----------------- |
-| `wrangler dev`          | **Local**           | `.dev.vars`           | `localhost:8787`        | Desarrollo rápido |
-| `wrangler dev --remote` | **Remoto Temporal** | `wrangler secret put` | `*.workers.dev`         | Testing real      |
-| `wrangler deploy`       | **Producción**      | `wrangler secret put` | `tu-worker.workers.dev` | Deploy final      |
+- `SUPABASE_URL` - URL de tu proyecto Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key de Supabase
+- `SUPABASE_ANON_KEY` - Anon key de Supabase
+- `SUPABASE_JWT_SECRET` - JWT secret de Supabase
+- `OPENAI_API_KEY` - API key de OpenAI
 
-### 🔧 **Configuración por Ambiente**
+**Configuración por ambiente:**
 
-#### **1. Desarrollo Local** 💻
+- **Local** (`wrangler dev --ip 0.0.0.0`): Archivo `.dev.vars`
+- **Remoto** (`wrangler dev --remote` / `wrangler deploy`): Cloudflare secrets via `wrangler secret put`
 
-Para `wrangler dev` (desarrollo local):
+**Scripts automáticos para secrets remotos:**
 
-```bash
-# Crear archivo .dev.vars (NO commitear a git)
-echo "SUPABASE_URL=https://tu-proyecto.supabase.co" > .dev.vars
-echo "SUPABASE_SERVICE_ROLE_KEY=eyJ..." >> .dev.vars
-echo "SUPABASE_ANON_KEY=eyJ..." >> .dev.vars
-echo "SUPABASE_JWT_SECRET=tu-jwt-secret" >> .dev.vars
-echo "OPENAI_API_KEY=sk-..." >> .dev.vars
+- Linux/Mac: `./secrets/put.bash` (lee `secrets/secrets.env`)
+- Windows: `.\secrets\put.ps1` (lee `secrets/secrets.env`)
 
-# Ejecutar localmente
-wrangler dev
-```
-
-⚠️ **IMPORTANTE**: Agrega `.dev.vars` a tu `.gitignore`
-
-#### **2. Remoto (Testing + Producción)** 🌐
-
-Para `wrangler dev --remote` y `wrangler deploy`:
-
-##### **Opción A: Manual** (Recomendado para seguridad)
+### 📋 **Verificación**
 
 ```bash
-# Configurar secrets uno por uno
-wrangler secret put SUPABASE_URL
-# Pegar: https://tu-proyecto.supabase.co
-
-wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-# Pegar: eyJ...
-
-wrangler secret put SUPABASE_ANON_KEY
-# Pegar: eyJ...
-
-wrangler secret put SUPABASE_JWT_SECRET
-# Pegar: tu-jwt-secret
-
-wrangler secret put OPENAI_API_KEY
-# Pegar: sk-...
-```
-
-##### **Opción B: Script Automático** (⚠️ Cuidado con logs)
-
-1. **Duplica `.env.example` como `secrets.env`** y configura tus valores:
-
-```bash
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-SUPABASE_ANON_KEY=eyJ...
-SUPABASE_JWT_SECRET=tu-jwt-secret
-OPENAI_API_KEY=sk-...
-```
-
-2. **Ejecuta el script**:
-
-**Linux/Mac/WSL:**
-
-```bash
-./secrets/put.bash
-```
-
-**Windows PowerShell:**
-
-```powershell
-.\secrets\put.ps1
-```
-
-### 📋 **Verificar Configuración**
-
-```bash
-# Ver secrets remotos configurados
-wrangler secret list
-
-# Ver tu cuenta actual
-wrangler whoami
+wrangler secret list  # Ver secrets configurados
+wrangler whoami      # Ver cuenta actual
 
 # Ver configuración del worker
 cat wrangler.toml
 ```
 
-### ⚠️ **Puntos Críticos del Equipo**
+### ⚠️ **Notas Importantes**
 
-1. **`.dev.vars` es SOLO para desarrollo local** - nunca se sube a git
-2. **`wrangler secret put` es para producción** - se guarda en Cloudflare
-3. **Cambiar un secret afecta inmediatamente** al worker desplegado (sin redeploy)
-4. **`--remote` y `deploy` comparten los mismos secrets**
-5. **No terminar `SUPABASE_URL` con `/`** (muy importante)
+- `.dev.vars` es solo para desarrollo local (agregar a `.gitignore`)
+- `SUPABASE_URL` NO debe terminar con `/`
+- Secrets remotos se comparten entre `--remote` y `deploy`
+- Los cambios en secrets se aplican inmediatamente sin redeploy
 
-### 🚨 **Troubleshooting Común**
+**Errores comunes:**
 
-**❌ Error: "Missing environment variables"**
-
-- Revisa que tengas todos los secrets configurados: `wrangler secret list`
-
-**❌ Error: Worker funciona local pero falla remoto**
-
-- Probablemente faltan secrets remotos, configúralos con `wrangler secret put`
-
-**❌ Error: CORS o 401 en requests**
-
-- Verifica que `SUPABASE_URL` no termine con `/`
-- Confirma que `SUPABASE_SERVICE_ROLE_KEY` sea el correcto
+- "Missing environment variables" → `wrangler secret list`
+- Worker local funciona pero remoto falla → configurar secrets remotos
+- CORS/401 errors → verificar `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`
 
 ## Important concepts
 
@@ -214,98 +141,33 @@ export const upstreamServices = {
 
 ## 🧪 Testing & Deployment
 
-### **Comandos y Sus Diferencias**
+### **Comandos y Modos de Desarrollo**
 
-| Comando                              | Dónde Ejecuta    | Variables       | Cuándo Usar                  |
-| ------------------------------------ | ---------------- | --------------- | ---------------------------- |
-| `wrangler dev --ip 0.0.0.0`          | Tu máquina local | `.dev.vars`     | Desarrollo rápido, debugging |
-| `wrangler dev --remote --ip 0.0.0.0` | Cloudflare Edge  | Secrets remotos | Testing real                 |
-| `wrangler deploy`                    | Cloudflare Edge  | Secrets remotos | Deploy a producción          |
+| Comando                              | Dónde Ejecuta    | Variables       | Acceso                | Cuándo Usar                                      |
+| ------------------------------------ | ---------------- | --------------- | --------------------- | ------------------------------------------------ |
+| `wrangler dev --ip 0.0.0.0`          | Tu máquina local | `.dev.vars`     | Red local + localhost | Desarrollo con clientes externos (Flutter, etc.) |
+| `wrangler dev --remote --ip 0.0.0.0` | Cloudflare Edge  | Secrets remotos | Internet público      | Testing en ambiente real                         |
+| `wrangler deploy`                    | Cloudflare Edge  | Secrets remotos | Internet público      | Deploy a producción                              |
 
-### **1. Desarrollo Local** 💻
+**Comandos recomendados:**
 
-```bash
-# Asegúrate de tener .dev.vars configurado
-wrangler dev
+- **Desarrollo local**: `wrangler dev --ip 0.0.0.0` (accesible desde red local para Flutter/móviles)
+- **Testing remoto**: `wrangler dev --remote --ip 0.0.0.0` (ambiente real de Cloudflare)
+- **Producción**: `wrangler deploy` (deploy permanente)
 
-# ✅ Ventajas:
-# - Rápido reload
-# - Debugging fácil
-# - No consume quota de Cloudflare
+**💡 Ventajas del modo local con `--ip 0.0.0.0`:**
 
-# ❌ Limitaciones:
-# - Solo accessible desde tu máquina
-# - No usa secrets remotos
-```
+Permite acceso desde múltiples interfaces de red:
 
-### **2. Testing Remoto** 🌐
+- `http://127.0.0.1:8787` - Localhost tradicional
+- `http://192.168.x.x:8787` - Tu IP en la red local (ideal para Flutter/móviles)
+- `http://172.x.x.x:8787` - Otras interfaces de red (Docker, WSL, etc.)
 
-```bash
-# Testing en el edge real de Cloudflare
-wrangler dev --remote --ip 0.0.0.0
+Esto es especialmente útil para:
 
-# ✅ Ventajas:
-# - Ambiente real de Cloudflare
-# - URL pública para compartir con el equipo
-# - Usa secrets remotos (como producción)
-# - Testing de latencia real
-
-# ⚠️ Notas:
-# - Requiere secrets configurados con `wrangler secret put`
-# - Consume quota de requests de Cloudflare
-```
-
-### **3. Deploy a Producción** 🚀
-
-```bash
-# Deploy permanente
-wrangler deploy
-
-# ✅ Resultado:
-# - Worker disponible 24/7
-# - URL estable para frontend
-# - Usa secrets remotos configurados
-```
-
-### **Flujo Recomendado para el Equipo** �
-
-1. **Desarrollo individual**: `wrangler dev` (cada dev con su `.dev.vars`)
-2. **Testing colaborativo**: `wrangler dev --remote` (URL compartida)
-3. **Deploy a staging/prod**: `wrangler deploy`
-
-### **URLs Generadas**
-
-```bash
-# Local
-wrangler dev
-# → http://localhost:8787
-
-# Remote testing
-wrangler dev --remote --ip 0.0.0.0
-# → https://sigapp-db-proxy.tu-usuario.workers.dev
-
-# Production
-wrangler deploy
-# → https://sigapp-db-proxy.tu-usuario.workers.dev
-```
-
-**💡 Tip**: El `--ip 0.0.0.0` permite que otros en tu red local también accedan al worker remoto.
-
-Example output:
-
-```bash
-$ wrangler deploy
-
- ⛅️ wrangler 4.12.0 (update available 4.13.2)
--------------------------------------------------------
-
-Total Upload: 10.75 KiB / gzip: 3.17 KiB
-No bindings found.
-Uploaded sigapp-api-gateway (3.34 sec)
-Deployed sigapp-api-gateway triggers (1.42 sec)
-  https://sigapp-api-gateway.j-daniel-c-b.workers.dev
-Current Version ID: dd190695-e8f3-43c3-a9d7-d9cd98ab477a
-```
+- Aplicaciones Flutter que necesitan conectarse desde dispositivos móviles
+- Testing desde otros dispositivos en tu red local
+- Desarrollo colaborativo en la misma red
 
 ## 📦 Endpoints
 
