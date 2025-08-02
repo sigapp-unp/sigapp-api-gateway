@@ -18,7 +18,7 @@ const levelColors: Record<LogLevel, string> = {
 
 const resetColor = '\x1b[0m';
 
-function log(level: LogLevel, message: unknown, name?: string, ...rest: unknown[]) {
+function _log(level: LogLevel, message: unknown, name?: string, ...rest: unknown[]) {
 	if (levelPriority[level] < levelPriority[CURRENT_LEVEL]) return;
 
 	const timestamp = new Date().toISOString();
@@ -32,8 +32,8 @@ function log(level: LogLevel, message: unknown, name?: string, ...rest: unknown[
 }
 
 export const logger = {
-	debug: (msg: unknown, name?: string, ...rest: unknown[]) => log('debug', msg, name, ...rest),
-	info: (msg: unknown, name?: string, ...rest: unknown[]) => log('info', msg, name, ...rest),
-	warn: (msg: unknown, name?: string, ...rest: unknown[]) => log('warn', msg, name, ...rest),
-	error: (msg: unknown, name?: string, ...rest: unknown[]) => log('error', msg, name, ...rest),
+	debug: (msg: unknown, name?: string, ...rest: unknown[]) => _log('debug', msg, name, ...rest),
+	info: (msg: unknown, name?: string, ...rest: unknown[]) => _log('info', msg, name, ...rest),
+	warn: (msg: unknown, name?: string, ...rest: unknown[]) => _log('warn', msg, name, ...rest),
+	error: (msg: unknown, name?: string, ...rest: unknown[]) => _log('error', msg, name, ...rest),
 };

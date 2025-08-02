@@ -1,7 +1,7 @@
-import { logger } from '../logging';
-import { SupabaseConfig } from '../types';
-import { createErrorResponse } from '../helpers/http';
-import { handlePasswordReset, handleVerifyUserExists } from '../helpers/external-services';
+import { logger } from '../../core/logging';
+import { SupabaseConfig } from '../../core/types';
+import { createErrorResponse } from '../../helpers/http';
+import { handlePasswordReset, handleVerifyUserExists } from '../../services/supabase-service';
 
 /**
  * Handles tools-related requests (password reset, academic validation, etc.)

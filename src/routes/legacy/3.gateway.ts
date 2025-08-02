@@ -1,7 +1,7 @@
-import { logger } from '../logging';
-import { Env } from '../types';
-import { createErrorResponse, makeProxyResponse, logRequestHeaders, logErrorResponseBody } from '../helpers/http';
-import { getUpstreamConfig, UpstreamConfig } from '../config/proxy';
+import { logger } from '../../core/logging';
+import { Env } from '../../core/types';
+import { createErrorResponse, makeProxyResponse, logRequestHeaders, logErrorResponseBody } from '../../helpers/http';
+import { getUpstreamConfig, UpstreamConfig } from '../../core/config/gateway-config';
 
 /**
  * Forward requests to an upstream service based on the X-Upstream header

@@ -13,7 +13,7 @@ export interface UpstreamConfig {
  * Available upstream services configuration with placeholders for environment variables
  * The placeholders ${VARIABLE} will be replaced with actual environment variable values at runtime
  */
-export const upstreamServices: Record<string, UpstreamConfig> = {
+const upstreamServices: Record<string, UpstreamConfig> = {
 	supabase: {
 		baseUrl: '${SUPABASE_URL}',
 		headers: {
@@ -37,7 +37,7 @@ export const upstreamServices: Record<string, UpstreamConfig> = {
  * @param env - Environment variables object
  * @returns String with placeholders replaced by environment variable values
  */
-export function replaceEnvPlaceholders(template: string, env: Env): string {
+export function substituteEnvVariables(template: string, env: Env): string {
 	return template.replace(/\${([^}]+)}/g, (match, key) => {
 		const value = env[key as keyof Env];
 		if (value === undefined) {
@@ -54,15 +54,15 @@ export function replaceEnvPlaceholders(template: string, env: Env): string {
  * @param env - Environment variables object
  * @returns Processed configuration with actual values
  */
-export function processUpstreamConfig(config: UpstreamConfig, env: Env): UpstreamConfig {
+function _processUpstreamConfig(config: UpstreamConfig, env: Env): UpstreamConfig {
 	const processedConfig: UpstreamConfig = {
-		baseUrl: replaceEnvPlaceholders(config.baseUrl, env),
+		baseUrl: substituteEnvVariables(config.baseUrl, env),
 		headers: {},
 	};
 
 	// Process headers
 	for (const [key, value] of Object.entries(config.headers)) {
-		processedConfig.headers[key] = replaceEnvPlaceholders(value, env);
+		processedConfig.headers[key] = substituteEnvVariables(value, env);
 	}
 
 	return processedConfig;
@@ -81,5 +81,5 @@ export function getUpstreamConfig(service: string, env: Env): UpstreamConfig {
 	if (!config) {
 		throw new Error(`Upstream service '${service}' not configured`);
 	}
-	return processUpstreamConfig(config, env);
+	return _processUpstreamConfig(config, env);
 }

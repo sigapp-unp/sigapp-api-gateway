@@ -1,6 +1,6 @@
-import { logger } from '../logging';
-import { SupabaseConfig } from '../types';
-import { createErrorResponse, validateUrl, makeProxyResponse, logErrorResponseBody } from '../helpers/http';
+import { logger } from '../../core/logging';
+import { SupabaseConfig } from '../../core/types';
+import { createErrorResponse, validateUrl, makeProxyResponse, logErrorResponseBody } from '../../helpers/http';
 
 /**
  * Proxies all authentication requests directly to Supabase Auth API

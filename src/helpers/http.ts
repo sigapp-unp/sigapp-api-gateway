@@ -1,4 +1,4 @@
-import { logger } from '../logging';
+import { logger } from '../core/logging';
 
 /**
  * Helper function to safely truncate a token for logging

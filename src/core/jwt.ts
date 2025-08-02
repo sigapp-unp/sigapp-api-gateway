@@ -100,7 +100,7 @@ export async function verifyJwt({ token, jwkUrl, jwtSecret }: { token: string; j
 		logger.debug('Starting JWT verification process', 'JWT');
 
 		// Parse the JWT header to determine verification method
-		const header = parseJwtHeader(token);
+		const header = _parseJwtHeader(token);
 		const { kid, alg } = header;
 
 		// First try: Verify with shared secret (HS256)
@@ -113,7 +113,7 @@ export async function verifyJwt({ token, jwkUrl, jwtSecret }: { token: string; j
 			});
 
 			logger.info('Verification with shared secret successful', 'JWT');
-			logTokenExpiration(payload);
+			_logTokenExpiration(payload);
 			return payload;
 		} catch (hsError) {
 			logger.warn(`Shared secret verification failed: ${hsError}`, 'JWT');
@@ -135,7 +135,7 @@ export async function verifyJwt({ token, jwkUrl, jwtSecret }: { token: string; j
 				const { payload } = await jwtVerify(token, key);
 
 				logger.info('JWKS verification successful', 'JWT');
-				logTokenExpiration(payload);
+				_logTokenExpiration(payload);
 				return payload;
 			}
 
@@ -153,7 +153,7 @@ export async function verifyJwt({ token, jwkUrl, jwtSecret }: { token: string; j
  * @param token - The JWT token
  * @returns The decoded header as an object
  */
-function parseJwtHeader(token: string): { kid?: string; alg?: string } {
+function _parseJwtHeader(token: string): { kid?: string; alg?: string } {
 	const [headerB64] = token.split('.');
 
 	if (!headerB64) {
@@ -177,7 +177,7 @@ function parseJwtHeader(token: string): { kid?: string; alg?: string } {
  * Helper function to log token expiration information
  * @param payload - The JWT payload
  */
-function logTokenExpiration(payload: JWTPayload): void {
+function _logTokenExpiration(payload: JWTPayload): void {
 	if (payload.exp) {
 		const expDate = new Date(payload.exp * 1000);
 		const now = new Date();
